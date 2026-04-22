@@ -1,0 +1,101 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+.pnpm/
+.yarn/
+.yarn.lock
+package-lock.json
+pnpm-lock.yaml
+
+# Testing
+coverage/
+.nyc_output/
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build/
+/dist/
+
+# Misc
+.DS_Store
+Thumbs.db
+*.pem
+*.swp
+*.swo
+*~
+.cache/
+.temp/
+tmp/
+.tmp/
+*.pid
+*.seed
+*.pid.lock
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Local env files
+.env*.local
+!.env.local.example
+.env
+.env.development.*
+.env.test.*
+.env.production.*
+
+# Editor directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Vercel
+.vercel
+
+# Netlify
+.netlify
+
+# Typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Turbo
+.turbo
+
+# SSL Certificates
+certificates
+*.crt
+*.key
+
+# Temporary audio files
+*.wav
+*.mp3
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Agent/tool scratch files
+.kilo/
+
+# Local test fixtures and vendor demos
+tests/
+
+# PWA generated files
+/public/sw.js
+/public/workbox-*.js
+
+# Mac OS
+__MACOSX/
+
+# Temporary files
+cc
+*.tmp
