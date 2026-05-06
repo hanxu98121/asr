@@ -383,14 +383,14 @@ export default function Home() {
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 disabled={isProcessing || !apiKey.trim()}
               >
-                {isProcessing ? t('op.processing') : '🔄 ' + t('op.retry')}
+                <span>🔄</span> {isProcessing ? t('op.processing') : t('op.retry')}
               </button>
               <button
                 onClick={handleOptimize}
                 className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                 disabled={isOptimizing || !transcript.trim() || !aiApiKey.trim()}
               >
-                {isOptimizing ? t('ai.optimizing') : '✨ ' + t('op.reoptimize')}
+                <span>✨</span> {isOptimizing ? t('ai.optimizing') : t('op.reoptimize')}
               </button>
               <button
                 onClick={handleCopy}

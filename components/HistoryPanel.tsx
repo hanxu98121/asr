@@ -49,13 +49,21 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
     if (!hasOptimizedText) return;
     setShowOptimized(prev => ({
       ...prev,
-      [recordId]: !prev[recordId]
+      [recordId]: !(prev[recordId] ?? true)
     }));
+  };
+
+  // 是否显示优化文本，默认显示优化文本
+  const isShowingOptimized = (recordId: string, hasOptimizedText: boolean) => {
+    if (!hasOptimizedText) return false;
+    return showOptimized[recordId] ?? true;
   };
 
   // 获取记录要显示的文本
   const getDisplayText = (record: TranscriptionRecord) => {
-    return showOptimized[record.id] && record.optimizedText ? record.optimizedText : record.text;
+    return isShowingOptimized(record.id, !!record.optimizedText) && record.optimizedText
+      ? record.optimizedText
+      : record.text;
   };
 
   // 选择记录
@@ -63,7 +71,7 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
     if (!onSelectRecord) return;
     
     // 如果勾选了显示优化版，则将优化文本传入主界面
-    if (showOptimized[record.id] && record.optimizedText) {
+    if (isShowingOptimized(record.id, !!record.optimizedText) && record.optimizedText) {
       onSelectRecord({
         ...record,
         text: record.optimizedText
@@ -155,7 +163,7 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
                         <label className="flex items-center gap-1 cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={showOptimized[record.id] ?? true}
+                            checked={isShowingOptimized(record.id, !!record.optimizedText)}
                             onChange={() => toggleShowOptimized(record.id, !!record.optimizedText)}
                             className="w-3 h-3 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
                             title={t('history.optimized')}
@@ -167,7 +175,7 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
                         <button
                           onClick={() => handleSelectRecord(record)}
                           className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                          title="使用该记录"
+                          title={t('history.use')}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -177,7 +185,7 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
                       <button
                         onClick={() => copyRecord(record)}
                         className="text-green-500 hover:text-green-600 dark:text-green-400 dark:hover:text-green-300"
-                        title="复制"
+                        title={t('history.copy')}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
@@ -186,7 +194,7 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
                       <button
                         onClick={() => deleteRecord(record.id)}
                         className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-                        title="删除"
+                        title={t('history.delete')}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -194,7 +202,7 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
                       </button>
                     </div>
                   </div>
-                  <p className={`text-sm line-clamp-2 ${showOptimized[record.id] && record.optimizedText ? 'text-purple-800 dark:text-purple-200' : 'text-gray-800 dark:text-gray-200'}`}>
+                  <p className={`text-sm line-clamp-2 ${isShowingOptimized(record.id, !!record.optimizedText) && record.optimizedText ? 'text-purple-800 dark:text-purple-200' : 'text-gray-800 dark:text-gray-200'}`}>
                     {getDisplayText(record)}
                   </p>
                 </div>

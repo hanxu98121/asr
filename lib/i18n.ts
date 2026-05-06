@@ -258,20 +258,20 @@ export const translations: Translations = {
 
   // Operation Buttons
   'op.play': {
-    zh: '▶️ 播放录音',
-    en: '▶️ Play Recording'
+    zh: '播放录音',
+    en: 'Play Recording'
   },
   'op.retry': {
-    zh: '🔄 重新识别',
-    en: '🔄 Retry Recognition'
+    zh: '重新识别',
+    en: 'Retry Recognition'
   },
   'op.reoptimize': {
-    zh: '✨ 重新优化',
-    en: '✨ Re-optimize'
+    zh: '重新优化',
+    en: 'Re-optimize'
   },
   'op.copy': {
-    zh: '📋 复制文本',
-    en: '📋 Copy Text'
+    zh: '复制文本',
+    en: 'Copy Text'
   },
   'op.processing': {
     zh: '正在识别中，请稍候...',
