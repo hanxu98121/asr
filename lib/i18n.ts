@@ -139,6 +139,34 @@ export const translations: Translations = {
     zh: '如何获取？',
     en: 'How to get?'
   },
+  'settings.elevenlabs.quota.check': {
+    zh: '查询额度',
+    en: 'Check Quota'
+  },
+  'settings.elevenlabs.quota.loading': {
+    zh: '查询中...',
+    en: 'Checking...'
+  },
+  'settings.elevenlabs.quota.remaining': {
+    zh: '剩余额度',
+    en: 'Remaining'
+  },
+  'settings.elevenlabs.quota.total': {
+    zh: '总额度',
+    en: 'Total'
+  },
+  'settings.elevenlabs.quota.reset': {
+    zh: '重置时间',
+    en: 'Reset Time'
+  },
+  'settings.elevenlabs.quota.empty': {
+    zh: '点击“查询额度”获取当前剩余额度、总额度和重置时间',
+    en: 'Click "Check Quota" to load remaining quota, total quota, and reset time'
+  },
+  'settings.elevenlabs.quota.failed': {
+    zh: '额度查询失败：',
+    en: 'Quota check failed: '
+  },
   'settings.enter.api.key': {
     zh: '请输入API Key',
     en: 'Please enter API Key'

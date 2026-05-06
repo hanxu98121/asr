@@ -13,7 +13,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTranslation } from '@/lib/i18n';
 
 export default function Home() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [transcript, setTranscript] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +35,15 @@ export default function Home() {
   const [showTerminologyPanel, setShowTerminologyPanel] = useState(false);
   const [newSource, setNewSource] = useState('');
   const [newTarget, setNewTarget] = useState('');
+  const [elevenLabsQuota, setElevenLabsQuota] = useState<{
+    remainingCharacters: number;
+    totalCharacters: number;
+    usedCharacters: number;
+    resetAt: number | null;
+    tier: string | null;
+  } | null>(null);
+  const [isCheckingElevenLabsQuota, setIsCheckingElevenLabsQuota] = useState(false);
+  const [elevenLabsQuotaError, setElevenLabsQuotaError] = useState<string | null>(null);
   
   const [isHydrated, setIsHydrated] = useState(false);
   const [_, setForceUpdate] = useState(0);
@@ -127,6 +136,61 @@ export default function Home() {
       setIsOptimizing(false);
     }
   }, [transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl]);
+
+  const formatResetTime = useCallback((resetAt: number | null) => {
+    if (!resetAt) return '-';
+
+    const locale = language === 'zh' ? 'zh-CN' : 'en-US';
+    return new Date(resetAt * 1000).toLocaleString(locale, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }, [language]);
+
+  const handleCheckElevenLabsQuota = useCallback(async () => {
+    if (selectedBackend !== 'elevenlabs') return;
+    if (!apiKey.trim()) {
+      setElevenLabsQuotaError(t('settings.enter.api.key'));
+      return;
+    }
+
+    setIsCheckingElevenLabsQuota(true);
+    setElevenLabsQuotaError(null);
+
+    try {
+      const response = await fetch('/api/elevenlabs/subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ apiKey }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setElevenLabsQuota(null);
+        setElevenLabsQuotaError(`${t('settings.elevenlabs.quota.failed')}${result.error || response.statusText}`);
+        return;
+      }
+
+      setElevenLabsQuota({
+        remainingCharacters: result.remainingCharacters,
+        totalCharacters: result.totalCharacters,
+        usedCharacters: result.usedCharacters,
+        resetAt: result.resetAt,
+        tier: result.tier,
+      });
+    } catch (error) {
+      setElevenLabsQuota(null);
+      setElevenLabsQuotaError(`${t('settings.elevenlabs.quota.failed')}${(error as Error).message}`);
+    } finally {
+      setIsCheckingElevenLabsQuota(false);
+    }
+  }, [apiKey, selectedBackend, t]);
 
   // 保存后端选择到localStorage
   useEffect(() => {
@@ -497,30 +561,65 @@ export default function Home() {
 
       {/* API Key 输入 */}
       <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-        <label className="block text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">
-          {AVAILABLE_BACKENDS.find(b => b.name === selectedBackend)?.label} {t('settings.api.key')}
-          <a
-            href={(() => {
-              switch (selectedBackend) {
-                case 'elevenlabs':
-                  return 'https://elevenlabs.io/docs/eleven-api/quickstart#get-your-api-key';
-                case 'soniox':
-                  return 'https://soniox.com/docs/getting-started#api-key';
-                case 'groq':
-                  return 'https://console.groq.com/keys';
-                case 'openai':
-                  return 'https://platform.openai.com/api-keys';
-                default:
-                  return '#';
-              }
-            })()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-2 text-xs text-blue-500 hover:underline"
-          >
-            {t('settings.get.api.key')}
-          </a>
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {AVAILABLE_BACKENDS.find(b => b.name === selectedBackend)?.label} {t('settings.api.key')}
+            <a
+              href={(() => {
+                switch (selectedBackend) {
+                  case 'elevenlabs':
+                    return 'https://elevenlabs.io/docs/eleven-api/quickstart#get-your-api-key';
+                  case 'soniox':
+                    return 'https://soniox.com/docs/getting-started#api-key';
+                  case 'groq':
+                    return 'https://console.groq.com/keys';
+                  case 'openai':
+                    return 'https://platform.openai.com/api-keys';
+                  default:
+                    return '#';
+                }
+              })()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 text-xs text-blue-500 hover:underline"
+            >
+              {t('settings.get.api.key')}
+            </a>
+          </div>
+          {selectedBackend === 'elevenlabs' && (
+            <button
+              onClick={handleCheckElevenLabsQuota}
+              disabled={isCheckingElevenLabsQuota || !apiKey.trim()}
+              className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-400 disabled:cursor-not-allowed"
+            >
+              {isCheckingElevenLabsQuota ? t('settings.elevenlabs.quota.loading') : t('settings.elevenlabs.quota.check')}
+            </button>
+          )}
+        </div>
+        {selectedBackend === 'elevenlabs' && (
+          <div className="mb-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 text-xs text-blue-800 dark:text-blue-200">
+            {elevenLabsQuotaError ? (
+              <div>{elevenLabsQuotaError}</div>
+            ) : elevenLabsQuota ? (
+              <div className="grid grid-cols-1 gap-1 sm:grid-cols-3 sm:gap-3">
+                <div>
+                  <span className="text-blue-600 dark:text-blue-300">{t('settings.elevenlabs.quota.remaining')}:</span>{' '}
+                  <span className="font-semibold">{elevenLabsQuota.remainingCharacters.toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-blue-600 dark:text-blue-300">{t('settings.elevenlabs.quota.total')}:</span>{' '}
+                  <span className="font-semibold">{elevenLabsQuota.totalCharacters.toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="text-blue-600 dark:text-blue-300">{t('settings.elevenlabs.quota.reset')}:</span>{' '}
+                  <span className="font-semibold">{formatResetTime(elevenLabsQuota.resetAt)}</span>
+                </div>
+              </div>
+            ) : (
+              <div>{t('settings.elevenlabs.quota.empty')}</div>
+            )}
+          </div>
+        )}
         <input
           type="password"
           name="asr-api-key"
