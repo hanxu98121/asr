@@ -205,6 +205,10 @@ export const translations: Translations = {
     zh: '输入优化提示词...',
     en: 'Enter optimization prompt...'
   },
+  'ai.prompt.reset': {
+    zh: '恢复默认',
+    en: 'Reset to Default'
+  },
   'ai.terminology.title': {
     zh: '📚 专业术语管理',
     en: '📚 Terminology Management'

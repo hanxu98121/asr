@@ -135,7 +135,12 @@ export default function Home() {
     } finally {
       setIsOptimizing(false);
     }
-  }, [transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl]);
+  }, [transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, t]);
+
+  const handleResetPrompt = useCallback(() => {
+    setAiPrompt(DEFAULT_PROMPT);
+    localStorage.setItem('ai-optimizer-prompt', DEFAULT_PROMPT);
+  }, []);
 
   const formatResetTime = useCallback((resetAt: number | null) => {
     if (!resetAt) return '-';
@@ -866,27 +871,35 @@ export default function Home() {
             localStorage.setItem('ai-optimizer-prompt', newPrompt);
           }}
           placeholder={t('ai.prompt.placeholder')}
-          rows={2}
-          className="w-full px-4 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 resize-none"
+          rows={8}
+          className="w-full px-4 py-3 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 resize-none"
         />
         
         {/* 优化按钮 */}
-        {isHydrated && (
+        <div className="grid grid-cols-2 gap-2 mb-3">
           <button
-            onClick={handleOptimize}
-            disabled={isOptimizing || !transcript.trim() || !aiApiKey.trim()}
-            className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            type="button"
+            onClick={handleResetPrompt}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors border border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700"
           >
-          {isOptimizing ? (
-            <>
-              <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-              {t('ai.optimizing')}
-            </>
-          ) : (
-            t('ai.optimize')
-          )}
-        </button>
-        )}
+            {t('ai.prompt.reset')}
+          </button>
+          <button
+            type="button"
+            onClick={handleOptimize}
+            disabled={!isHydrated || isOptimizing || !transcript.trim() || !aiApiKey.trim()}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isOptimizing ? (
+              <>
+                <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                {t('ai.optimizing')}
+              </>
+            ) : (
+              t('ai.optimize')
+            )}
+          </button>
+        </div>
         
         {/* 选项 */}
         <div className="flex flex-col gap-2 mt-3">
