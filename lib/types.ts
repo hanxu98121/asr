@@ -8,6 +8,12 @@ export interface ASRResult {
   language?: string;
 }
 
+export interface TerminologyItem {
+  id: string;
+  source: string;
+  target: string;
+}
+
 export interface TranscriptionRecord {
   id: string;
   text: string;

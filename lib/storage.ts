@@ -1,4 +1,4 @@
-import { TranscriptionRecord } from './types';
+import { TerminologyItem, TranscriptionRecord } from './types';
 import type { AIOptimizerBackend } from './ai-optimizer';
 
 const STORAGE_KEY = 'asr_transcription_history';
@@ -10,12 +10,6 @@ const AI_OPTIMIZER_API_KEY_KEY = 'ai-optimizer-api-key';
 const AI_OPTIMIZER_PROMPT_KEY = 'ai-optimizer-prompt';
 const AI_TERMINOLOGY_KEY = 'ai-terminology-list';
 const HISTORY_UPDATED_EVENT = 'asr-history-updated';
-
-export interface TerminologyItem {
-  id: string;
-  source: string; // 同义词/错误词，多个用顿号分隔
-  target: string; // 标准术语
-}
 
 // 触发历史记录更新事件
 const dispatchHistoryUpdate = () => {
