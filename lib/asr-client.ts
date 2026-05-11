@@ -1,6 +1,7 @@
 import { ASRResult } from './types';
+import type { TerminologyItem } from './types';
 
-export type ASRBackend = 'elevenlabs' | 'soniox' | 'groq' | 'openai';
+export type ASRBackend = 'elevenlabs' | 'soniox' | 'groq' | 'openai' | 'gladia';
 
 export interface ASRBackendConfig {
   name: ASRBackend;
@@ -44,12 +45,20 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     defaultModel: 'whisper-1',
     supportsLanguageAuto: true,
   },
+  {
+    name: 'gladia',
+    label: 'Gladia',
+    description: 'Gladia STT with custom vocabulary support',
+    requiresApiKey: true,
+    supportsLanguageAuto: true,
+  },
 ];
 
 export class ASRClient {
   private apiKey: string = '';
   private language: string = 'auto';
   private backend: ASRBackend = 'elevenlabs';
+  private terminology: TerminologyItem[] = [];
 
   constructor(apiKey?: string, language?: string, backend?: ASRBackend) {
     if (apiKey) this.apiKey = apiKey;
@@ -67,6 +76,10 @@ export class ASRClient {
 
   setBackend(backend: ASRBackend): void {
     this.backend = backend;
+  }
+
+  setTerminology(terminology: TerminologyItem[]): void {
+    this.terminology = terminology;
   }
 
   getBackend(): ASRBackend {
@@ -90,6 +103,9 @@ export class ASRClient {
     formData.append('apiKey', this.apiKey);
     formData.append('language', this.language);
     formData.append('backend', this.backend);
+    if (this.terminology.length > 0) {
+      formData.append('terminology', JSON.stringify(this.terminology));
+    }
 
     try {
       const response = await fetch('/api/stt', {

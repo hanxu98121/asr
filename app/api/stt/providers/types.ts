@@ -3,11 +3,14 @@
  * Defines the contract for all ASR backend implementations
  */
 
+import type { TerminologyItem } from '../../../../lib/types';
+
 export interface ASRConfig {
   apiKey: string;
   language?: string;
   model?: string;
   enablePunctuation?: boolean;
+  terminology?: TerminologyItem[];
   [key: string]: any;
 }
 

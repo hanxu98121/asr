@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { providerRegistry, AVAILABLE_BACKENDS } from './providers';
+import type { TerminologyItem } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,6 +13,19 @@ export async function POST(request: NextRequest) {
     const apiKey = formData.get('apiKey') as string | null;
     const language = (formData.get('language') as string) || 'auto';
     const backend = (formData.get('backend') as string) || 'elevenlabs';
+    const terminologyRaw = formData.get('terminology') as string | null;
+
+    let terminology: TerminologyItem[] = [];
+    if (terminologyRaw) {
+      try {
+        terminology = JSON.parse(terminologyRaw) as TerminologyItem[];
+      } catch {
+        return NextResponse.json(
+          { success: false, error: 'Invalid terminology payload' },
+          { status: 400 }
+        );
+      }
+    }
 
     // 调试日志
     console.log('Received request:', {
@@ -49,6 +63,7 @@ export async function POST(request: NextRequest) {
     const result = await provider.transcribe(buffer, audioFile.name, {
       apiKey,
       language,
+      terminology,
     });
 
     return NextResponse.json({

@@ -8,6 +8,7 @@ import { ElevenLabsProvider } from './elevenlabs';
 import { SonioxProvider } from './soniox';
 import { GroqProvider } from './groq';
 import { OpenAIProvider } from './openai';
+import { GladiaProvider } from './gladia';
 
 /**
  * Available ASR backend configurations
@@ -45,6 +46,13 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     defaultModel: 'whisper-1',
     supportsLanguageAuto: true,
   },
+  {
+    name: 'gladia',
+    label: 'Gladia',
+    description: 'Gladia STT with custom vocabulary',
+    requiresApiKey: true,
+    supportsLanguageAuto: true,
+  },
 ];
 
 class ProviderRegistry {
@@ -66,6 +74,10 @@ class ProviderRegistry {
 
     this.register('openai', {
       provider: new OpenAIProvider(),
+    });
+
+    this.register('gladia', {
+      provider: new GladiaProvider(),
     });
   }
 

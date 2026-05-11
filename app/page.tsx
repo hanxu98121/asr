@@ -7,8 +7,8 @@ import HistoryPanel from '@/components/HistoryPanel';
 import ActionButtons from '@/components/ActionButtons';
 import { ASRClient, ASRBackend, AVAILABLE_BACKENDS } from '@/lib/asr-client';
 import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
-import { ASRResult, RecordingState, TranscriptionRecord } from '@/lib/types';
-import { storage, TerminologyItem } from '@/lib/storage';
+import { ASRResult, RecordingState, TerminologyItem, TranscriptionRecord } from '@/lib/types';
+import { storage } from '@/lib/storage';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTranslation } from '@/lib/i18n';
 
@@ -98,8 +98,9 @@ export default function Home() {
       asrClientRef.current.setApiKey(apiKey);
       asrClientRef.current.setBackend(selectedBackend);
     }
+    asrClientRef.current.setTerminology(terminology);
     return asrClientRef.current;
-  }, [apiKey, selectedBackend]);
+  }, [apiKey, selectedBackend, terminology]);
 
   // 优化文本
   const handleOptimize = useCallback(async () => {
@@ -647,6 +648,8 @@ export default function Home() {
                 return 'gsk_...';
               case 'openai':
                 return 'sk_...';
+              case 'gladia':
+                return 'gladia_...';
               default:
                 return t('settings.enter.api.key');
             }
@@ -676,6 +679,7 @@ export default function Home() {
                     soniox: localStorage.getItem('soniox-api-key') || '',
                     groq: localStorage.getItem('groq-api-key') || '',
                     openai: localStorage.getItem('openai-api-key') || '',
+                    gladia: localStorage.getItem('gladia-api-key') || '',
                   }
                 },
                 aiOptimizer: {

@@ -19,6 +19,7 @@ export { AVAILABLE_BACKENDS } from './registry';
 export { ElevenLabsProvider } from './elevenlabs';
 export { SonioxProvider } from './soniox';
 export { GroqProvider } from './groq';
+export { GladiaProvider } from './gladia';
 
 // Token joining strategies
 export {
