@@ -19,7 +19,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [selectedBackend, setSelectedBackend] = useState<ASRBackend>('elevenlabs');
-  const [asrLanguage, setAsrLanguage] = useState<string>('auto');
   const [apiKey, setApiKey] = useState<string>('');
   
   // AI Optimizer state
@@ -52,10 +51,8 @@ export default function Home() {
   // 客户端hydration完成后加载localStorage数据
   useEffect(() => {
     const savedBackend = (localStorage.getItem('asr-backend') as ASRBackend) || 'elevenlabs';
-    const savedAsrLanguage = localStorage.getItem('asr-language') || 'auto';
     const savedKey = localStorage.getItem(`${savedBackend}-api-key`) || '';
     setSelectedBackend(savedBackend);
-    setAsrLanguage(savedAsrLanguage);
     setApiKey(savedKey);
     setIsHydrated(true);
     
@@ -96,15 +93,15 @@ export default function Home() {
   // 初始化ASR客户端
   const getASRClient = useCallback(() => {
     if (!asrClientRef.current) {
-      asrClientRef.current = new ASRClient(apiKey, asrLanguage, selectedBackend);
+      asrClientRef.current = new ASRClient(apiKey, 'auto', selectedBackend);
     } else {
       asrClientRef.current.setApiKey(apiKey);
-      asrClientRef.current.setLanguage(asrLanguage);
+      asrClientRef.current.setLanguage('auto');
       asrClientRef.current.setBackend(selectedBackend);
     }
     asrClientRef.current.setTerminology(terminology);
     return asrClientRef.current;
-  }, [apiKey, asrLanguage, selectedBackend, terminology]);
+  }, [apiKey, selectedBackend, terminology]);
 
   // 优化文本
   const handleOptimize = useCallback(async () => {
@@ -552,46 +549,21 @@ export default function Home() {
       </div>
 
       {/* ASR 后端设置 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            {t('settings.asr.backend')}
-          </label>
-          <select
-            value={selectedBackend}
-            onChange={(e) => setSelectedBackend(e.target.value as ASRBackend)}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-          >
-            {AVAILABLE_BACKENDS.map(backend => (
-              <option key={backend.name} value={backend.name}>
-                {backend.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            {t('settings.asr.language')}
-          </label>
-          <select
-            value={asrLanguage}
-            onChange={(e) => {
-              const newLang = e.target.value;
-              setAsrLanguage(newLang);
-              localStorage.setItem('asr-language', newLang);
-            }}
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-          >
-            <option value="auto">{t('settings.asr.language.auto')}</option>
-            <option value="zh">{t('settings.asr.language.zh')}</option>
-            <option value="en">{t('settings.asr.language.en')}</option>
-            <option value="ja">{t('settings.asr.language.ja')}</option>
-            <option value="ko">{t('settings.asr.language.ko')}</option>
-            <option value="fr">{t('settings.asr.language.fr')}</option>
-            <option value="de">{t('settings.asr.language.de')}</option>
-          </select>
-        </div>
+      <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          {t('settings.asr.backend')}
+        </label>
+        <select
+          value={selectedBackend}
+          onChange={(e) => setSelectedBackend(e.target.value as ASRBackend)}
+          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+        >
+          {AVAILABLE_BACKENDS.map(backend => (
+            <option key={backend.name} value={backend.name}>
+              {backend.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* API Key 输入 */}
