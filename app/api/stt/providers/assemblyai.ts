@@ -82,9 +82,9 @@ export class AssemblyAIProvider implements ASRProvider {
       body.language_code = language;
     }
 
-    // AssemblyAI uses speech_model for some models, but usually 'best' or 'nano'
+    // AssemblyAI uses speech_models (array) for model selection
     if (model) {
-      body.speech_model = model;
+      body.speech_models = [model];
     }
 
     const response = await fetch(`${this.baseUrl}/transcript`, {
