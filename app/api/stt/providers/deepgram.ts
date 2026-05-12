@@ -32,7 +32,7 @@ export class DeepgramProvider implements ASRProvider {
         'Authorization': `Token ${apiKey}`,
         'Content-Type': 'audio/*', // Deepgram can auto-detect format
       },
-      body: audioBuffer,
+      body: new Uint8Array(audioBuffer),
     });
 
     if (!response.ok) {

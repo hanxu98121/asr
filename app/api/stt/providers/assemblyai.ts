@@ -55,7 +55,7 @@ export class AssemblyAIProvider implements ASRProvider {
         'Authorization': apiKey,
         'Content-Type': 'application/octet-stream',
       },
-      body: audioBuffer,
+      body: new Uint8Array(audioBuffer),
     });
 
     if (!response.ok) {
