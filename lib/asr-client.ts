@@ -65,7 +65,7 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     label: 'AssemblyAI',
     description: 'AssemblyAI Speech-to-Text',
     requiresApiKey: true,
-    defaultModel: 'best',
+    defaultModel: 'universal-2',
     supportsLanguageAuto: true,
   },
 ];

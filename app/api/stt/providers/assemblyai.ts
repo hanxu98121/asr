@@ -28,7 +28,7 @@ export class AssemblyAIProvider implements ASRProvider {
     fileName: string,
     config: ASRConfig
   ): Promise<ASRResult> {
-    const { apiKey, language = 'zh', model = 'best' } = config;
+    const { apiKey, language = 'zh', model = 'universal-2' } = config;
 
     // 1. Upload audio
     const uploadUrl = await this.uploadAudio(apiKey, audioBuffer);
