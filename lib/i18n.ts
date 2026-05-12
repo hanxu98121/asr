@@ -131,6 +131,38 @@ export const translations: Translations = {
     zh: '选择ASR后端',
     en: 'Select ASR Backend'
   },
+  'settings.asr.language': {
+    zh: '识别语言',
+    en: 'Transcription Language'
+  },
+  'settings.asr.language.auto': {
+    zh: '自动检测',
+    en: 'Auto Detect'
+  },
+  'settings.asr.language.zh': {
+    zh: '中文',
+    en: 'Chinese'
+  },
+  'settings.asr.language.en': {
+    zh: '英文',
+    en: 'English'
+  },
+  'settings.asr.language.ja': {
+    zh: '日文',
+    en: 'Japanese'
+  },
+  'settings.asr.language.ko': {
+    zh: '韩文',
+    en: 'Korean'
+  },
+  'settings.asr.language.fr': {
+    zh: '法文',
+    en: 'French'
+  },
+  'settings.asr.language.de': {
+    zh: '德文',
+    en: 'German'
+  },
   'settings.api.key': {
     zh: 'API Key',
     en: 'API Key'
