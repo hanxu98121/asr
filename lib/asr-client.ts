@@ -1,7 +1,7 @@
 import { ASRResult } from './types';
 import type { TerminologyItem } from './types';
 
-export type ASRBackend = 'elevenlabs' | 'soniox' | 'groq' | 'openai' | 'gladia';
+export type ASRBackend = 'elevenlabs' | 'soniox' | 'groq' | 'openai' | 'gladia' | 'deepgram' | 'assemblyai';
 
 export interface ASRBackendConfig {
   name: ASRBackend;
@@ -50,6 +50,22 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     label: 'Gladia',
     description: 'Gladia STT with custom vocabulary support',
     requiresApiKey: true,
+    supportsLanguageAuto: true,
+  },
+  {
+    name: 'deepgram',
+    label: 'Deepgram',
+    description: 'Deepgram Nova-3 STT',
+    requiresApiKey: true,
+    defaultModel: 'nova-3',
+    supportsLanguageAuto: true,
+  },
+  {
+    name: 'assemblyai',
+    label: 'AssemblyAI',
+    description: 'AssemblyAI Speech-to-Text',
+    requiresApiKey: true,
+    defaultModel: 'best',
     supportsLanguageAuto: true,
   },
 ];

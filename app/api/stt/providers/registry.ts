@@ -9,6 +9,8 @@ import { SonioxProvider } from './soniox';
 import { GroqProvider } from './groq';
 import { OpenAIProvider } from './openai';
 import { GladiaProvider } from './gladia';
+import { DeepgramProvider } from './deepgram';
+import { AssemblyAIProvider } from './assemblyai';
 
 /**
  * Available ASR backend configurations
@@ -53,6 +55,22 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     requiresApiKey: true,
     supportsLanguageAuto: true,
   },
+  {
+    name: 'deepgram',
+    label: 'Deepgram',
+    description: 'Deepgram Nova-3 STT',
+    requiresApiKey: true,
+    defaultModel: 'nova-3',
+    supportsLanguageAuto: true,
+  },
+  {
+    name: 'assemblyai',
+    label: 'AssemblyAI',
+    description: 'AssemblyAI Speech-to-Text',
+    requiresApiKey: true,
+    defaultModel: 'best',
+    supportsLanguageAuto: true,
+  },
 ];
 
 class ProviderRegistry {
@@ -78,6 +96,14 @@ class ProviderRegistry {
 
     this.register('gladia', {
       provider: new GladiaProvider(),
+    });
+
+    this.register('deepgram', {
+      provider: new DeepgramProvider(),
+    });
+
+    this.register('assemblyai', {
+      provider: new AssemblyAIProvider(),
     });
   }
 

@@ -20,6 +20,8 @@ export { ElevenLabsProvider } from './elevenlabs';
 export { SonioxProvider } from './soniox';
 export { GroqProvider } from './groq';
 export { GladiaProvider } from './gladia';
+export { DeepgramProvider } from './deepgram';
+export { AssemblyAIProvider } from './assemblyai';
 
 // Token joining strategies
 export {

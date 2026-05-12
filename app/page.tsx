@@ -581,6 +581,10 @@ export default function Home() {
                     return 'https://console.groq.com/keys';
                   case 'openai':
                     return 'https://platform.openai.com/api-keys';
+                  case 'deepgram':
+                    return 'https://console.deepgram.com/';
+                  case 'assemblyai':
+                    return 'https://www.assemblyai.com/dashboard';
                   default:
                     return '#';
                 }
