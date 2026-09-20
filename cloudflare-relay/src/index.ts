@@ -35,7 +35,11 @@ export class GladiaRelaySession implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     const [client, server] = Object.values(new WebSocketPair());
     this.clientSocket = server;
-    server.accept({ allowHalfOpen: true });
+    // Cloudflare compatibility dates on or after 2026-03-17 surface binary
+    // WebSocket frames as Blob by default. Gladia expects the microphone PCM
+    // to remain a binary frame, so force ArrayBuffer delivery before accept().
+    server.binaryType = 'arraybuffer';
+    server.accept();
 
     server.addEventListener('message', (event) => {
       if (!this.sessionStarted && typeof event.data === 'string') {
