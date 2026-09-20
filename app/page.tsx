@@ -6,6 +6,7 @@ import RealtimeSubtitles from '@/components/RealtimeSubtitles';
 import HistoryPanel from '@/components/HistoryPanel';
 import ActionButtons from '@/components/ActionButtons';
 import { ASRClient, ASRBackend, AVAILABLE_BACKENDS } from '@/lib/asr-client';
+import { GladiaLiveClient, GladiaTranscriptEvent } from '@/lib/gladia-live-client';
 import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
 import { ASRResult, RecordingState, TerminologyItem, TranscriptionRecord } from '@/lib/types';
 import { storage } from '@/lib/storage';
@@ -89,6 +90,9 @@ export default function Home() {
   const asrClientRef = useRef<ASRClient | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const audioRecorderRef = useRef<AudioRecorderHandle>(null);
+  const gladiaLiveRef = useRef<GladiaLiveClient | null>(null);
+  const gladiaFinalTextRef = useRef('');
+  const gladiaPartialTextRef = useRef('');
 
   // 初始化ASR客户端
   const getASRClient = useCallback(() => {
@@ -286,10 +290,25 @@ export default function Home() {
     setRecordingDuration(duration);
 
     // 自动识别
-    if (apiKey.trim()) {
+    // Gladia Live has already returned the transcript while audio was captured.
+    if (apiKey.trim() && selectedBackend !== 'gladia') {
       await recognizeAudio(audioBlob, duration);
     }
-  }, [apiKey, recognizeAudio]);
+  }, [apiKey, recognizeAudio, selectedBackend]);
+
+  const handleGladiaTranscript = useCallback((event: GladiaTranscriptEvent) => {
+    if (event.isFinal) {
+      gladiaFinalTextRef.current = `${gladiaFinalTextRef.current} ${event.text}`.trim();
+      gladiaPartialTextRef.current = '';
+    } else {
+      gladiaPartialTextRef.current = event.text;
+    }
+    setTranscript(`${gladiaFinalTextRef.current} ${gladiaPartialTextRef.current}`.trim());
+  }, []);
+
+  const handleGladiaAudioChunk = useCallback((pcmData: ArrayBuffer) => {
+    gladiaLiveRef.current?.sendAudio(pcmData);
+  }, []);
 
   // 处理录音状态变化
   const handleStateChange = useCallback(async (state: RecordingState) => {
@@ -390,16 +409,32 @@ export default function Home() {
   // 开始录音
   const handleStartRecording = useCallback(() => {
     if (!isRecording && !isProcessing && apiKey.trim()) {
-      audioRecorderRef.current?.startRecording();
+      void (async () => {
+        try {
+          if (selectedBackend === 'gladia') {
+            gladiaFinalTextRef.current = '';
+            gladiaPartialTextRef.current = '';
+            const client = new GladiaLiveClient(handleGladiaTranscript, setError);
+            gladiaLiveRef.current = client;
+            await client.start(apiKey, 'auto');
+          }
+          await audioRecorderRef.current?.startRecording();
+        } catch (error) {
+          gladiaLiveRef.current?.close();
+          gladiaLiveRef.current = null;
+          setError((error as Error).message);
+        }
+      })();
     } else if (!apiKey.trim()) {
       setError(t('settings.enter.api.key'));
     }
-  }, [isRecording, isProcessing, apiKey]);
+  }, [isRecording, isProcessing, apiKey, selectedBackend, handleGladiaTranscript, t]);
 
   // 停止录音
   const handleStopRecording = useCallback(() => {
     if (isRecording) {
       audioRecorderRef.current?.stopRecording();
+      gladiaLiveRef.current?.stop();
     }
   }, [isRecording]);
 
@@ -433,6 +468,7 @@ export default function Home() {
         <AudioRecorder
           ref={audioRecorderRef}
           onAudioComplete={handleAudioComplete}
+          onAudioChunk={selectedBackend === 'gladia' ? handleGladiaAudioChunk : undefined}
           onStateChange={handleStateChange}
           onError={handleError}
         />

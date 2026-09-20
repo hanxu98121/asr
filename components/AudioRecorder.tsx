@@ -7,19 +7,20 @@ import { useTranslation } from '@/lib/i18n';
 
 interface AudioRecorderProps {
   onAudioComplete: (wavData: Uint8Array, duration: number) => void;
+  onAudioChunk?: (pcmData: ArrayBuffer) => void;
   onStateChange: (state: RecordingState) => void;
   onError: (error: string) => void;
 }
 
 export interface AudioRecorderHandle {
-  startRecording: () => void;
+  startRecording: () => Promise<void>;
   stopRecording: () => void;
 }
 
 const BUFFER_SIZE = 4096;
 
 const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
-  ({ onAudioComplete, onStateChange, onError }, ref) => {
+  ({ onAudioComplete, onAudioChunk, onStateChange, onError }, ref) => {
   const { t } = useTranslation();
   const [recordingState, setRecordingState] = useState<RecordingState>({
     isRecording: false,
@@ -89,6 +90,12 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
         newBuffer.set(audioBufferRef.current);
         newBuffer.set(inputData, audioBufferRef.current.length);
         audioBufferRef.current = newBuffer;
+
+        // Gladia Live accepts binary 16 kHz / 16-bit / mono PCM frames.
+        if (onAudioChunk && audioProcessorRef.current) {
+          const pcmData = audioProcessorRef.current.convertToPCM(inputData);
+          onAudioChunk(pcmData.buffer.slice(0));
+        }
       };
 
       // 连接音频节点
