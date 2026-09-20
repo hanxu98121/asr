@@ -54,7 +54,7 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
   },
   {
     name: 'gladia-realtime',
-    label: 'Gladia Real-time',
+    label: 'Gladia Real Time',
     description: 'Gladia real-time transcription over WebSocket',
     requiresApiKey: true,
     supportsLanguageAuto: true,

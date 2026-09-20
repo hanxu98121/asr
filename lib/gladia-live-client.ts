@@ -18,14 +18,19 @@ interface GladiaLiveMessage {
 export class GladiaLiveClient {
   private socket: WebSocket | null = null;
   private intentionalClose = false;
+  private stopRequested = false;
+  private completeNotified = false;
 
   constructor(
     private readonly onTranscript: (event: GladiaTranscriptEvent) => void,
     private readonly onError: (message: string) => void,
+    private readonly onComplete?: () => void,
   ) {}
 
   async start(apiKey: string, language: string): Promise<void> {
     this.intentionalClose = false;
+    this.stopRequested = false;
+    this.completeNotified = false;
     const relayUrl = process.env.NEXT_PUBLIC_GLADIA_RELAY_URL?.trim();
     if (relayUrl) {
       const wsUrl = relayUrl.replace(/^http/i, 'ws');
@@ -71,6 +76,9 @@ export class GladiaLiveClient {
         } else if (!this.intentionalClose && event.code !== 1000) {
           this.onError(`Gladia WebSocket closed unexpectedly (${event.code})${detail}`);
         }
+        if (this.stopRequested) {
+          this.notifyComplete();
+        }
       };
     });
   }
@@ -84,6 +92,7 @@ export class GladiaLiveClient {
   stop(): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.intentionalClose = true;
+      this.stopRequested = true;
       this.socket.send(JSON.stringify({ type: 'stop_recording' }));
     }
   }
@@ -115,6 +124,11 @@ export class GladiaLiveClient {
           isFinal: Boolean(message.data.is_final),
           language: message.data.utterance.language,
         });
+      } else if (message.type === 'post_final_transcript' || message.type === 'end_session') {
+        // Gladia sends post_final_transcript after the last final utterance.
+        // Use it as the earliest reliable signal to run post-recording work;
+        // the socket close event is only a fallback for relay implementations.
+        this.notifyComplete();
       } else if (message.error) {
         const errorMessage = typeof message.error === 'string'
           ? message.error
@@ -124,5 +138,12 @@ export class GladiaLiveClient {
     } catch {
       // Ignore non-JSON lifecycle frames.
     }
+  }
+
+  private notifyComplete(): void {
+    if (this.completeNotified) return;
+    this.completeNotified = true;
+    this.stopRequested = false;
+    this.onComplete?.();
   }
 }
