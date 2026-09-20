@@ -47,8 +47,8 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
   },
   {
     name: 'gladia',
-    label: 'Gladia (异步)',
-    description: 'Gladia pre-recorded transcription with custom vocabulary support',
+    label: 'Gladia (Async)',
+    description: 'Gladia asynchronous pre-recorded transcription with custom vocabulary support',
     requiresApiKey: true,
     supportsLanguageAuto: true,
   },
