@@ -1,0 +1,16 @@
+name = "asr-gladia-relay"
+main = "src/index.ts"
+compatibility_date = "2026-09-20"
+
+[durable_objects]
+bindings = [
+  { name = "GLADIA_SESSIONS", class_name = "GladiaRelaySession" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GladiaRelaySession"]
+
+[vars]
+# Set this to the exact HTTPS origin that hosts the ASR frontend.
+ALLOWED_ORIGIN = ""

@@ -24,6 +24,14 @@ export class GladiaLiveClient {
   ) {}
 
   async start(apiKey: string, language: string): Promise<void> {
+    const relayUrl = process.env.NEXT_PUBLIC_GLADIA_RELAY_URL?.trim();
+    if (relayUrl) {
+      const wsUrl = relayUrl.replace(/^http/i, 'ws');
+      const separator = wsUrl.includes('?') ? '&' : '?';
+      await this.connect(`${wsUrl}${separator}language=${encodeURIComponent(language)}`);
+      return;
+    }
+
     const response = await fetch('/api/gladia/live', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -34,8 +42,12 @@ export class GladiaLiveClient {
       throw new Error(session.error || 'Unable to start Gladia live session');
     }
 
+    await this.connect(session.url);
+  }
+
+  private async connect(url: string): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      const socket = new WebSocket(session.url);
+      const socket = new WebSocket(url);
       this.socket = socket;
       socket.binaryType = 'arraybuffer';
       socket.onopen = () => resolve();

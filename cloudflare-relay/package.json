@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "name": "asr-gladia-relay",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "wrangler types && tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "wrangler": "latest"
+  }
+}
