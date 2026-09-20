@@ -486,7 +486,7 @@ export default function Home() {
 
         {/* 操作按钮 */}
         <div className="w-full flex flex-col items-center gap-3 mt-2">
-          <div className="grid w-full max-w-5xl grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+          <div className="grid w-full max-w-5xl grid-cols-2 gap-3 lg:grid-cols-4">
           {isHydrated && currentAudioUrl && !isRecording && (
             <>
               <button
