@@ -1,7 +1,7 @@
 import { ASRResult } from './types';
 import type { TerminologyItem } from './types';
 
-export type ASRBackend = 'elevenlabs' | 'soniox' | 'groq' | 'openai' | 'gladia';
+export type ASRBackend = 'elevenlabs' | 'soniox' | 'groq' | 'openai' | 'gladia' | 'gladia-realtime';
 
 export interface ASRBackendConfig {
   name: ASRBackend;
@@ -47,8 +47,15 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
   },
   {
     name: 'gladia',
-    label: 'Gladia',
-    description: 'Gladia STT with custom vocabulary support',
+    label: 'Gladia (异步)',
+    description: 'Gladia pre-recorded transcription with custom vocabulary support',
+    requiresApiKey: true,
+    supportsLanguageAuto: true,
+  },
+  {
+    name: 'gladia-realtime',
+    label: 'Gladia Real-time',
+    description: 'Gladia real-time transcription over WebSocket',
     requiresApiKey: true,
     supportsLanguageAuto: true,
   },

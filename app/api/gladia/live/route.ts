@@ -31,7 +31,9 @@ export async function POST(request: NextRequest) {
         sample_rate: 16000,
         bit_depth: 16,
         channels: 1,
-        interim_results: true,
+        messages_config: {
+          receive_partial_transcripts: true,
+        },
         language_config: {
           languages,
           code_switching: language === 'auto',

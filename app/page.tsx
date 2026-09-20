@@ -13,6 +13,9 @@ import { storage } from '@/lib/storage';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTranslation } from '@/lib/i18n';
 
+const getApiKeyStorageKey = (backend: ASRBackend): string =>
+  backend === 'gladia' || backend === 'gladia-realtime' ? 'gladia-api-key' : `${backend}-api-key`;
+
 export default function Home() {
   const { t, language } = useTranslation();
   const [transcript, setTranscript] = useState('');
@@ -52,7 +55,7 @@ export default function Home() {
   // 客户端hydration完成后加载localStorage数据
   useEffect(() => {
     const savedBackend = (localStorage.getItem('asr-backend') as ASRBackend) || 'elevenlabs';
-    const savedKey = localStorage.getItem(`${savedBackend}-api-key`) || '';
+    const savedKey = localStorage.getItem(getApiKeyStorageKey(savedBackend)) || '';
     setSelectedBackend(savedBackend);
     setApiKey(savedKey);
     setIsHydrated(true);
@@ -207,16 +210,21 @@ export default function Home() {
     if (isHydrated) {
       localStorage.setItem('asr-backend', selectedBackend);
       // 切换后端时加载对应的API Key
-      const savedKey = localStorage.getItem(`${selectedBackend}-api-key`) || '';
+      const savedKey = localStorage.getItem(getApiKeyStorageKey(selectedBackend)) || '';
       setApiKey(savedKey);
     }
   }, [selectedBackend, isHydrated]);
 
 
   // 识别音频
-  const recognizeAudio = useCallback(async (audioBlob: Blob, duration: number = 0) => {
+  const recognizeAudio = useCallback(async (
+    audioBlob: Blob,
+    duration: number = 0,
+    backendOverride?: ASRBackend,
+  ) => {
+    const backendForRequest = backendOverride || selectedBackend;
     if (!apiKey.trim()) {
-      const backendLabel = AVAILABLE_BACKENDS.find(b => b.name === selectedBackend)?.label || selectedBackend;
+      const backendLabel = AVAILABLE_BACKENDS.find(b => b.name === backendForRequest)?.label || backendForRequest;
       setError(`${t('error.no.api.key')}${backendLabel} API Key`);
       return;
     }
@@ -226,6 +234,7 @@ export default function Home() {
 
     try {
       const client = getASRClient();
+      client.setBackend(backendForRequest);
       const result = await client.recognizeAudio(audioBlob, `recording-${Date.now()}.wav`);
 
       if (result.success && result.text) {
@@ -278,7 +287,7 @@ export default function Home() {
     } finally {
       setIsProcessing(false);
     }
-  }, [apiKey, getASRClient, autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, autoCopyOptimized, t]);
+  }, [apiKey, selectedBackend, getASRClient, autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, autoCopyOptimized, t]);
 
   // 处理录音完成
   const handleAudioComplete = useCallback(async (wavData: Uint8Array, duration: number) => {
@@ -291,7 +300,7 @@ export default function Home() {
 
     // 自动识别
     // Gladia Live has already returned the transcript while audio was captured.
-    if (apiKey.trim() && selectedBackend !== 'gladia') {
+    if (apiKey.trim() && selectedBackend !== 'gladia-realtime') {
       await recognizeAudio(audioBlob, duration);
     }
   }, [apiKey, recognizeAudio, selectedBackend]);
@@ -327,9 +336,9 @@ export default function Home() {
   // 重新识别
   const handleReRecognize = useCallback(() => {
     if (currentAudioBlob) {
-      recognizeAudio(currentAudioBlob);
+      recognizeAudio(currentAudioBlob, 0, selectedBackend === 'gladia-realtime' ? 'gladia' : undefined);
     }
-  }, [currentAudioBlob, recognizeAudio]);
+  }, [currentAudioBlob, recognizeAudio, selectedBackend]);
 
   // 播放录音
   const handlePlayAudio = useCallback(() => {
@@ -411,7 +420,7 @@ export default function Home() {
     if (!isRecording && !isProcessing && apiKey.trim()) {
       void (async () => {
         try {
-          if (selectedBackend === 'gladia') {
+          if (selectedBackend === 'gladia-realtime') {
             gladiaFinalTextRef.current = '';
             gladiaPartialTextRef.current = '';
             const client = new GladiaLiveClient(handleGladiaTranscript, setError);
@@ -468,7 +477,7 @@ export default function Home() {
         <AudioRecorder
           ref={audioRecorderRef}
           onAudioComplete={handleAudioComplete}
-          onAudioChunk={selectedBackend === 'gladia' ? handleGladiaAudioChunk : undefined}
+          onAudioChunk={selectedBackend === 'gladia-realtime' ? handleGladiaAudioChunk : undefined}
           onStateChange={handleStateChange}
           onError={handleError}
         />
@@ -617,6 +626,9 @@ export default function Home() {
                     return 'https://console.groq.com/keys';
                   case 'openai':
                     return 'https://platform.openai.com/api-keys';
+                  case 'gladia':
+                  case 'gladia-realtime':
+                    return 'https://app.gladia.io/account';
                   default:
                     return '#';
                 }
@@ -671,7 +683,7 @@ export default function Home() {
             const newKey = e.target.value;
             setApiKey(newKey);
             if (isHydrated) {
-              localStorage.setItem(`${selectedBackend}-api-key`, newKey);
+              localStorage.setItem(getApiKeyStorageKey(selectedBackend), newKey);
             }
           }}
           placeholder={(() => {
@@ -685,6 +697,7 @@ export default function Home() {
               case 'openai':
                 return 'sk_...';
               case 'gladia':
+              case 'gladia-realtime':
                 return 'gladia_...';
               default:
                 return t('settings.enter.api.key');
@@ -774,8 +787,10 @@ export default function Home() {
                           }
                         });
                         // 更新当前选中后端的API Key
-                        if (config.asr.backend && config.asr.apiKeys[config.asr.backend]) {
-                          setApiKey(config.asr.apiKeys[config.asr.backend] as string);
+                        if (config.asr.backend) {
+                          const importedKey = config.asr.apiKeys[config.asr.backend] ||
+                            config.asr.apiKeys[getApiKeyStorageKey(config.asr.backend as ASRBackend)];
+                          if (importedKey) setApiKey(importedKey as string);
                         }
                       }
 
