@@ -8,6 +8,8 @@ import { useTranslation } from '@/lib/i18n';
 interface AudioRecorderProps {
   onAudioComplete: (wavData: Uint8Array, duration: number) => void;
   onAudioChunk?: (pcmData: Uint8Array) => void;
+  onStartRequest?: () => void;
+  onStopRequest?: () => void;
   onStateChange: (state: RecordingState) => void;
   onError: (error: string) => void;
 }
@@ -20,7 +22,7 @@ export interface AudioRecorderHandle {
 const BUFFER_SIZE = 4096;
 
 const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
-  ({ onAudioComplete, onAudioChunk, onStateChange, onError }, ref) => {
+  ({ onAudioComplete, onAudioChunk, onStartRequest, onStopRequest, onStateChange, onError }, ref) => {
   const { t } = useTranslation();
   const [recordingState, setRecordingState] = useState<RecordingState>({
     isRecording: false,
@@ -33,10 +35,12 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
   const analyserRef = useRef<AnalyserNode | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioBufferRef = useRef<Float32Array>(new Float32Array());
+  const audioChunksRef = useRef<Float32Array[]>([]);
   const audioProcessorRef = useRef<AudioProcessor | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const isRecordingRef = useRef(false);
+  const isPausedRef = useRef(false);
 
   // 暴露给父组件的方法
   useImperativeHandle(ref, () => ({
@@ -78,18 +82,18 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
       scriptProcessorRef.current = scriptProcessor;
 
       // 初始化音频处理器
-      audioProcessorRef.current = new AudioProcessor(44100, 1);
+      // Browsers may ignore the requested sample rate, so use the actual rate.
+      audioProcessorRef.current = new AudioProcessor(audioContext.sampleRate, 1);
+      audioChunksRef.current = [];
 
       // 处理实时音频数据
       scriptProcessor.onaudioprocess = (event) => {
-        if (recordingState.isPaused) return;
+        if (isPausedRef.current) return;
 
         const inputData = event.inputBuffer.getChannelData(0);
-        // 将数据添加到缓冲区
-        const newBuffer = new Float32Array(audioBufferRef.current.length + inputData.length);
-        newBuffer.set(audioBufferRef.current);
-        newBuffer.set(inputData, audioBufferRef.current.length);
-        audioBufferRef.current = newBuffer;
+        // Copy each small frame once. Repeatedly reallocating the complete recording
+        // becomes prohibitively expensive during multi-minute sessions.
+        audioChunksRef.current.push(new Float32Array(inputData));
 
         // Gladia Live accepts binary 16 kHz / 16-bit / mono PCM frames.
         if (onAudioChunk && audioProcessorRef.current) {
@@ -110,7 +114,7 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
 
       // 开始音量检测
       const updateVolume = () => {
-        if (analyserRef.current && recordingState.isRecording && !recordingState.isPaused) {
+        if (analyserRef.current && isRecordingRef.current && !isPausedRef.current) {
           const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
           analyserRef.current.getByteFrequencyData(dataArray);
           const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
@@ -120,11 +124,12 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
           animationFrameRef.current = requestAnimationFrame(updateVolume);
         }
       };
-      updateVolume();
-
       const newState = { ...recordingState, isRecording: true, isPaused: false, duration: 0 };
+      isRecordingRef.current = true;
+      isPausedRef.current = false;
       setRecordingState(newState);
       onStateChange(newState);
+      updateVolume();
     } catch (error) {
       console.error('Failed to start recording:', error);
       onError((error as Error).message);
@@ -135,8 +140,15 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
   const stopRecording = () => {
     try {
       // 生成完整的WAV文件
-      if (audioBufferRef.current.length > 0 && audioProcessorRef.current) {
-        const pcmData = audioProcessorRef.current.convertToPCM(audioBufferRef.current);
+      const totalSamples = audioChunksRef.current.reduce((total, chunk) => total + chunk.length, 0);
+      if (totalSamples > 0 && audioProcessorRef.current) {
+        const completeAudio = new Float32Array(totalSamples);
+        let offset = 0;
+        for (const chunk of audioChunksRef.current) {
+          completeAudio.set(chunk, offset);
+          offset += chunk.length;
+        }
+        const pcmData = audioProcessorRef.current.convertToPCM(completeAudio);
         const wavData = audioProcessorRef.current.createWavFile(pcmData);
         onAudioComplete(wavData, recordingState.duration);
       }
@@ -145,7 +157,9 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
       onError((error as Error).message);
     } finally {
       // 清理资源
-      audioBufferRef.current = new Float32Array();
+      audioChunksRef.current = [];
+      isRecordingRef.current = false;
+      isPausedRef.current = false;
 
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -183,6 +197,7 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
     if (!recordingState.isRecording) return;
 
     const newState = { ...recordingState, isPaused: !recordingState.isPaused, volume: 0 };
+    isPausedRef.current = newState.isPaused;
     setRecordingState(newState);
     onStateChange(newState);
   };
@@ -200,7 +215,7 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
     <div className="audio-recorder">
       {!recordingState.isRecording ? (
         <button
-          onClick={startRecording}
+          onClick={() => onStartRequest ? onStartRequest() : void startRecording()}
           className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 flex items-center gap-2"
         >
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
@@ -233,7 +248,7 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
             )}
           </button>
           <button
-            onClick={stopRecording}
+            onClick={() => onStopRequest ? onStopRequest() : stopRecording()}
             className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 flex items-center gap-2"
           >
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">

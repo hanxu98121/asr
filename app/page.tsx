@@ -478,6 +478,8 @@ export default function Home() {
           ref={audioRecorderRef}
           onAudioComplete={handleAudioComplete}
           onAudioChunk={selectedBackend === 'gladia-realtime' ? handleGladiaAudioChunk : undefined}
+          onStartRequest={handleStartRecording}
+          onStopRequest={handleStopRecording}
           onStateChange={handleStateChange}
           onError={handleError}
         />

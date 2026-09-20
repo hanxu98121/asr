@@ -17,6 +17,7 @@ interface GladiaLiveMessage {
 
 export class GladiaLiveClient {
   private socket: WebSocket | null = null;
+  private intentionalClose = false;
 
   constructor(
     private readonly onTranscript: (event: GladiaTranscriptEvent) => void,
@@ -24,6 +25,7 @@ export class GladiaLiveClient {
   ) {}
 
   async start(apiKey: string, language: string): Promise<void> {
+    this.intentionalClose = false;
     const relayUrl = process.env.NEXT_PUBLIC_GLADIA_RELAY_URL?.trim();
     if (relayUrl) {
       const wsUrl = relayUrl.replace(/^http/i, 'ws');
@@ -51,11 +53,24 @@ export class GladiaLiveClient {
       const socket = new WebSocket(url);
       this.socket = socket;
       socket.binaryType = 'arraybuffer';
-      socket.onopen = () => resolve();
-      socket.onerror = () => reject(new Error('Gladia WebSocket connection failed'));
-      socket.onmessage = (event) => this.handleMessage(event.data);
-      socket.onclose = () => {
+      let opened = false;
+      socket.onopen = () => {
+        opened = true;
+        resolve();
+      };
+      socket.onerror = () => {
+        if (!opened) reject(new Error('Gladia WebSocket connection failed'));
+        else this.onError('Gladia WebSocket connection failed');
+      };
+      socket.onmessage = (event) => void this.handleMessage(event.data);
+      socket.onclose = (event) => {
         if (this.socket === socket) this.socket = null;
+        const detail = event.reason ? `: ${event.reason}` : '';
+        if (!opened) {
+          reject(new Error(`Gladia WebSocket closed before it was ready (${event.code})${detail}`));
+        } else if (!this.intentionalClose && event.code !== 1000) {
+          this.onError(`Gladia WebSocket closed unexpectedly (${event.code})${detail}`);
+        }
       };
     });
   }
@@ -68,19 +83,31 @@ export class GladiaLiveClient {
 
   stop(): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
+      this.intentionalClose = true;
       this.socket.send(JSON.stringify({ type: 'stop_recording' }));
     }
   }
 
   close(): void {
+    this.intentionalClose = true;
     this.socket?.close();
     this.socket = null;
   }
 
-  private handleMessage(rawMessage: unknown): void {
-    if (typeof rawMessage !== 'string') return;
+  private async handleMessage(rawMessage: unknown): Promise<void> {
     try {
-      const message = JSON.parse(rawMessage) as GladiaLiveMessage;
+      let text: string;
+      if (typeof rawMessage === 'string') {
+        text = rawMessage;
+      } else if (rawMessage instanceof Blob) {
+        text = await rawMessage.text();
+      } else if (rawMessage instanceof ArrayBuffer) {
+        text = new TextDecoder().decode(rawMessage);
+      } else {
+        return;
+      }
+
+      const message = JSON.parse(text) as GladiaLiveMessage;
       if (message.type === 'transcript' && message.data?.utterance?.text) {
         this.onTranscript({
           id: message.data.id || crypto.randomUUID(),
@@ -89,7 +116,7 @@ export class GladiaLiveClient {
           language: message.data.utterance.language,
         });
       } else if (message.type === 'error') {
-        this.onError(message.error || 'Gladia live transcription failed');
+        this.onError(typeof message.error === 'string' ? message.error : 'Gladia live transcription failed');
       }
     } catch {
       // Ignore non-JSON lifecycle frames.
