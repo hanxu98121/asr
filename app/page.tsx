@@ -485,51 +485,83 @@ export default function Home() {
         />
 
         {/* 操作按钮 */}
-        <div className="flex items-center gap-3 mt-2 flex-wrap">
+        <div className="w-full flex flex-col items-center gap-3 mt-2">
+          <div className="grid w-full max-w-5xl grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
           {isHydrated && currentAudioUrl && !isRecording && (
             <>
               <button
                 onClick={handlePlayAudio}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                 disabled={isProcessing}
               >
                 <span>▶️</span> {t('op.play')}
               </button>
               <button
                 onClick={handleReRecognize}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 disabled={isProcessing || !apiKey.trim()}
               >
                 <span>🔄</span> {isProcessing ? t('op.processing') : t('op.retry')}
               </button>
               <button
                 onClick={handleOptimize}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
                 disabled={isOptimizing || !transcript.trim() || !aiApiKey.trim()}
               >
                 <span>✨</span> {isOptimizing ? t('ai.optimizing') : t('op.reoptimize')}
               </button>
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                 disabled={!transcript || isProcessing}
               >
                 <span>📋</span> {t('op.copy')}
               </button>
             </>
           )}
+          </div>
 
-          {copySuccess && (
-            <span className="text-sm text-green-600 dark:text-green-400 font-medium">
-              ✅ {t('action.copy.success')}
-            </span>
-          )}
+          {/* 录音后的自动处理选项：空间足够时横向排列，否则自动换成上下排列 */}
+          <div className="grid w-full max-w-4xl grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+            <label className="flex min-w-0 items-center justify-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer sm:justify-start">
+              <input
+                type="checkbox"
+                checked={autoOptimize}
+                onChange={(e) => {
+                  setAutoOptimize(e.target.checked);
+                  localStorage.setItem('ai-auto-optimize', String(e.target.checked));
+                }}
+                className="h-4 w-4 shrink-0 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <span>{t('ai.auto.optimize')}</span>
+            </label>
+            <label className="flex min-w-0 items-center justify-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer sm:justify-start">
+              <input
+                type="checkbox"
+                checked={autoCopyOptimized}
+                onChange={(e) => {
+                  setAutoCopyOptimized(e.target.checked);
+                  localStorage.setItem('ai-auto-copy-optimized', String(e.target.checked));
+                }}
+                className="h-4 w-4 shrink-0 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <span>{t('ai.auto.copy')}</span>
+            </label>
+          </div>
 
-          {isProcessing && (
-            <span className="text-blue-600 dark:text-blue-400">
-              {t('op.processing')}
-            </span>
-          )}
+          <div className="flex min-h-5 flex-wrap items-center justify-center gap-3 text-center">
+            {copySuccess && (
+              <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                ✅ {t('action.copy.success')}
+              </span>
+            )}
+
+            {isProcessing && (
+              <span className="text-blue-600 dark:text-blue-400">
+                {t('op.processing')}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -958,34 +990,6 @@ export default function Home() {
           </button>
         </div>
         
-        {/* 选项 */}
-        <div className="flex flex-col gap-2 mt-3">
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoOptimize}
-              onChange={(e) => {
-                setAutoOptimize(e.target.checked);
-                localStorage.setItem('ai-auto-optimize', String(e.target.checked));
-              }}
-              className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-            />
-            {t('ai.auto.optimize')}
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoCopyOptimized}
-              onChange={(e) => {
-                setAutoCopyOptimized(e.target.checked);
-                localStorage.setItem('ai-auto-copy-optimized', String(e.target.checked));
-              }}
-              className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-            />
-            {t('ai.auto.copy')}
-          </label>
-        </div>
-
         {/* 专业术语管理 */}
         <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
           <button
