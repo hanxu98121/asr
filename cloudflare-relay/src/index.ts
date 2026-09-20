@@ -96,8 +96,17 @@ export class GladiaRelaySession implements DurableObject {
           sample_rate: 16000,
           bit_depth: 16,
           channels: 1,
-          messages_config: { receive_partial_transcripts: true },
-          language_config: { languages, code_switching: language === 'auto' },
+          messages_config: {
+            receive_partial_transcripts: true,
+            receive_final_transcripts: true,
+            receive_errors: true,
+          },
+          language_config: {
+            languages,
+            // Gladia explicitly advises against code switching with an empty
+            // language list. Auto detection should lock onto the first language.
+            code_switching: false,
+          },
         }),
       });
 

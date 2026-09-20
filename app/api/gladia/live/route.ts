@@ -33,10 +33,14 @@ export async function POST(request: NextRequest) {
         channels: 1,
         messages_config: {
           receive_partial_transcripts: true,
+          receive_final_transcripts: true,
+          receive_errors: true,
         },
         language_config: {
           languages,
-          code_switching: language === 'auto',
+          // Gladia recommends disabling code switching for unrestricted auto
+          // detection; enabling it requires a small, explicit language list.
+          code_switching: false,
         },
       }),
     });

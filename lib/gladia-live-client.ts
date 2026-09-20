@@ -12,7 +12,7 @@ interface GladiaLiveMessage {
     is_final?: boolean;
     utterance?: { text?: string; language?: string };
   };
-  error?: string;
+  error?: string | { message?: string };
 }
 
 export class GladiaLiveClient {
@@ -115,8 +115,11 @@ export class GladiaLiveClient {
           isFinal: Boolean(message.data.is_final),
           language: message.data.utterance.language,
         });
-      } else if (message.type === 'error') {
-        this.onError(typeof message.error === 'string' ? message.error : 'Gladia live transcription failed');
+      } else if (message.error) {
+        const errorMessage = typeof message.error === 'string'
+          ? message.error
+          : message.error.message;
+        this.onError(errorMessage || `Gladia live transcription failed (${message.type || 'unknown error'})`);
       }
     } catch {
       // Ignore non-JSON lifecycle frames.
