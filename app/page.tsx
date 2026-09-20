@@ -306,7 +306,7 @@ export default function Home() {
     setTranscript(`${gladiaFinalTextRef.current} ${gladiaPartialTextRef.current}`.trim());
   }, []);
 
-  const handleGladiaAudioChunk = useCallback((pcmData: ArrayBuffer) => {
+  const handleGladiaAudioChunk = useCallback((pcmData: Uint8Array) => {
     gladiaLiveRef.current?.sendAudio(pcmData);
   }, []);
 

@@ -47,7 +47,7 @@ export class GladiaLiveClient {
     });
   }
 
-  sendAudio(pcmChunk: ArrayBuffer): void {
+  sendAudio(pcmChunk: Uint8Array): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(pcmChunk);
     }
