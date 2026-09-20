@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // The relay URL is intentionally public: the browser needs it to open WSS.
+  // Explicitly expose it at build time so client bundles do not depend on a
+  // runtime process.env object, which is unavailable in the browser.
+  env: {
+    NEXT_PUBLIC_GLADIA_RELAY_URL: process.env.NEXT_PUBLIC_GLADIA_RELAY_URL || '',
+  },
   // 支持更大的音频文件上传
   experimental: {
     serverActions: {
