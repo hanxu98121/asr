@@ -1,8 +1,9 @@
 # Gladia WebSocket relay
 
-This Worker keeps the Gladia API key off the browser. Each browser WebSocket
-gets its own Durable Object, which creates one Gladia Live session and forwards
-binary PCM frames and JSON events in both directions.
+Each browser WebSocket gets its own Durable Object, which creates one Gladia
+Live session and forwards binary PCM frames and JSON events in both directions.
+The user's Gladia API key is sent as the first encrypted WebSocket message; it
+is not put in a URL or stored as a Cloudflare secret.
 
 ## Deploy
 
@@ -11,7 +12,6 @@ From this directory:
 ```bash
 npm install
 npx wrangler login
-npx wrangler secret put GLADIA_API_KEY
 npx wrangler deploy
 ```
 

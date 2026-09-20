@@ -29,6 +29,7 @@ export class GladiaLiveClient {
       const wsUrl = relayUrl.replace(/^http/i, 'ws');
       const separator = wsUrl.includes('?') ? '&' : '?';
       await this.connect(`${wsUrl}${separator}language=${encodeURIComponent(language)}`);
+      this.socket?.send(JSON.stringify({ type: 'start_session', apiKey, language }));
       return;
     }
 

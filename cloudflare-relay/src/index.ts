@@ -1,5 +1,4 @@
 interface Env {
-  GLADIA_API_KEY: string;
   ALLOWED_ORIGIN?: string;
   GLADIA_SESSIONS: DurableObjectNamespace;
 }
@@ -15,10 +14,6 @@ export default {
       return new Response('Expected Upgrade: websocket', { status: 426 });
     }
 
-    if (!env.GLADIA_API_KEY) {
-      return new Response('Missing GLADIA_API_KEY secret', { status: 500 });
-    }
-
     const sessionId = env.GLADIA_SESSIONS.newUniqueId();
     return env.GLADIA_SESSIONS.get(sessionId).fetch(request);
   },
@@ -30,6 +25,7 @@ export class GladiaRelaySession implements DurableObject {
   private upstream: WebSocket | null = null;
   private pendingMessages: Array<string | ArrayBuffer> = [];
   private clientSocket: WebSocket | null = null;
+  private sessionStarted = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
@@ -42,6 +38,24 @@ export class GladiaRelaySession implements DurableObject {
     server.accept({ allowHalfOpen: true });
 
     server.addEventListener('message', (event) => {
+      if (!this.sessionStarted && typeof event.data === 'string') {
+        try {
+          const message = JSON.parse(event.data) as { type?: string; apiKey?: string; language?: string };
+          if (message.type === 'start_session') {
+            if (!message.apiKey?.trim()) {
+              this.sendClient({ type: 'error', error: 'Missing Gladia API key' });
+              server.close(1008, 'Missing Gladia API key');
+              return;
+            }
+            this.sessionStarted = true;
+            this.ctx.waitUntil(this.connectToGladia(message.apiKey, message.language || 'auto'));
+            return;
+          }
+        } catch {
+          // Treat non-JSON frames as audio after the session is initialized.
+        }
+      }
+
       if (this.upstream?.readyState === WebSocket.OPEN) {
         this.sendUpstream(event.data);
       } else {
@@ -60,19 +74,17 @@ export class GladiaRelaySession implements DurableObject {
       this.upstream = null;
     });
 
-    this.ctx.waitUntil(this.connectToGladia(request));
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private async connectToGladia(request: Request): Promise<void> {
+  private async connectToGladia(apiKey: string, language: string): Promise<void> {
     try {
-      const language = new URL(request.url).searchParams.get('language') || 'auto';
       const languages = language === 'auto' ? [] : [language];
       const response = await fetch('https://api.gladia.io/v2/live', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-gladia-key': this.env.GLADIA_API_KEY,
+          'x-gladia-key': apiKey,
         },
         body: JSON.stringify({
           model: 'solaria-1',
