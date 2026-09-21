@@ -15,6 +15,13 @@ interface GladiaLiveMessage {
   error?: string | { message?: string };
 }
 
+export interface GladiaLiveVocabularyEntry {
+  value: string;
+  pronunciations?: string[];
+  intensity?: number;
+  language?: string;
+}
+
 export class GladiaLiveClient {
   private socket: WebSocket | null = null;
   private intentionalClose = false;
@@ -27,7 +34,11 @@ export class GladiaLiveClient {
     private readonly onComplete?: () => void,
   ) {}
 
-  async start(apiKey: string, language: string): Promise<void> {
+  async start(
+    apiKey: string,
+    language: string,
+    terminology: Array<{ source: string; target: string }> = [],
+  ): Promise<void> {
     this.intentionalClose = false;
     this.stopRequested = false;
     this.completeNotified = false;
@@ -36,14 +47,23 @@ export class GladiaLiveClient {
       const wsUrl = relayUrl.replace(/^http/i, 'ws');
       const separator = wsUrl.includes('?') ? '&' : '?';
       await this.connect(`${wsUrl}${separator}language=${encodeURIComponent(language)}`);
-      this.socket?.send(JSON.stringify({ type: 'start_session', apiKey, language }));
+      this.socket?.send(JSON.stringify({
+        type: 'start_session',
+        apiKey,
+        language,
+        customVocabulary: this.buildCustomVocabulary(terminology, language),
+      }));
       return;
     }
 
     const response = await fetch('/api/gladia/live', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey, language }),
+      body: JSON.stringify({
+        apiKey,
+        language,
+        customVocabulary: this.buildCustomVocabulary(terminology, language),
+      }),
     });
     const session = await response.json();
     if (!response.ok || !session.success || !session.url) {
@@ -138,6 +158,26 @@ export class GladiaLiveClient {
     } catch {
       // Ignore non-JSON lifecycle frames.
     }
+  }
+
+  private buildCustomVocabulary(
+    terminology: Array<{ source: string; target: string }>,
+    language: string,
+  ): GladiaLiveVocabularyEntry[] {
+    return terminology.reduce<GladiaLiveVocabularyEntry[]>((entries, item) => {
+      const value = item.target.trim();
+      if (!value) return entries;
+
+      const pronunciations = item.source
+        .split(/[，,、/;；\n]+/g)
+        .map(part => part.trim())
+        .filter(Boolean);
+      const entry: GladiaLiveVocabularyEntry = { value };
+      if (pronunciations.length > 0) entry.pronunciations = pronunciations;
+      if (language && language !== 'auto') entry.language = language;
+      entries.push(entry);
+      return entries;
+    }, []);
   }
 
   private notifyComplete(): void {

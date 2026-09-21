@@ -44,7 +44,17 @@ export class GladiaRelaySession implements DurableObject {
     server.addEventListener('message', (event) => {
       if (!this.sessionStarted && typeof event.data === 'string') {
         try {
-          const message = JSON.parse(event.data) as { type?: string; apiKey?: string; language?: string };
+          const message = JSON.parse(event.data) as {
+            type?: string;
+            apiKey?: string;
+            language?: string;
+            customVocabulary?: Array<{
+              value: string;
+              pronunciations?: string[];
+              intensity?: number;
+              language?: string;
+            }>;
+          };
           if (message.type === 'start_session') {
             if (!message.apiKey?.trim()) {
               this.sendClient({ type: 'error', error: 'Missing Gladia API key' });
@@ -52,7 +62,11 @@ export class GladiaRelaySession implements DurableObject {
               return;
             }
             this.sessionStarted = true;
-            this.ctx.waitUntil(this.connectToGladia(message.apiKey, message.language || 'auto'));
+            this.ctx.waitUntil(this.connectToGladia(
+              message.apiKey,
+              message.language || 'auto',
+              message.customVocabulary || [],
+            ));
             return;
           }
         } catch {
@@ -81,33 +95,54 @@ export class GladiaRelaySession implements DurableObject {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private async connectToGladia(apiKey: string, language: string): Promise<void> {
+  private async connectToGladia(
+    apiKey: string,
+    language: string,
+    customVocabulary: Array<{
+      value: string;
+      pronunciations?: string[];
+      intensity?: number;
+      language?: string;
+    }>,
+  ): Promise<void> {
     try {
       const languages = language === 'auto' ? [] : [language];
+      const body: Record<string, unknown> = {
+        model: 'solaria-1',
+        encoding: 'wav/pcm',
+        sample_rate: 16000,
+        bit_depth: 16,
+        channels: 1,
+        messages_config: {
+          receive_partial_transcripts: true,
+          receive_final_transcripts: true,
+          receive_errors: true,
+        },
+        language_config: {
+          languages,
+          // Gladia explicitly advises against code switching with an empty
+          // language list. Auto detection should lock onto the first language.
+          code_switching: false,
+        },
+      };
+
+      if (customVocabulary.length > 0) {
+        body.realtime_processing = {
+          custom_vocabulary: true,
+          custom_vocabulary_config: {
+            vocabulary: customVocabulary,
+            default_intensity: 0.4,
+          },
+        };
+      }
+
       const response = await fetch('https://api.gladia.io/v2/live', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-gladia-key': apiKey,
         },
-        body: JSON.stringify({
-          model: 'solaria-1',
-          encoding: 'wav/pcm',
-          sample_rate: 16000,
-          bit_depth: 16,
-          channels: 1,
-          messages_config: {
-            receive_partial_transcripts: true,
-            receive_final_transcripts: true,
-            receive_errors: true,
-          },
-          language_config: {
-            languages,
-            // Gladia explicitly advises against code switching with an empty
-            // language list. Auto detection should lock onto the first language.
-            code_switching: false,
-          },
-        }),
+        body: JSON.stringify(body),
       });
 
       const session = await response.json<{ url?: string; message?: string; error?: string }>();

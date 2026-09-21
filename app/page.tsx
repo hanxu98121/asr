@@ -488,7 +488,7 @@ export default function Home() {
             gladiaFinalizedRef.current = false;
             const client = new GladiaLiveClient(handleGladiaTranscript, setError, handleGladiaSessionComplete);
             gladiaLiveRef.current = client;
-            await client.start(apiKey, 'auto');
+            await client.start(apiKey, 'auto', terminology);
           }
           await audioRecorderRef.current?.startRecording();
         } catch (error) {
@@ -500,7 +500,7 @@ export default function Home() {
     } else if (!apiKey.trim()) {
       setError(t('settings.enter.api.key'));
     }
-  }, [isRecording, isProcessing, apiKey, selectedBackend, handleGladiaTranscript, handleGladiaSessionComplete, t]);
+  }, [isRecording, isProcessing, apiKey, selectedBackend, terminology, handleGladiaTranscript, handleGladiaSessionComplete, t]);
 
   // 停止录音
   const handleStopRecording = useCallback(() => {
