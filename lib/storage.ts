@@ -125,16 +125,4 @@ export const storage = {
     }
   },
 
-  // 生成术语对照表的提示词文本
-  getTerminologyPrompt: (): string => {
-    const terms = storage.getTerminology();
-    if (terms.length === 0) return '';
-    
-    let prompt = '\n---\n### 专业术语对照表（必须严格遵守）：\n';
-    terms.forEach(term => {
-      prompt += `- ${term.source} → ${term.target}\n`;
-    });
-    prompt += '---\n';
-    return prompt;
-  },
 };

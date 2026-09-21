@@ -1,3 +1,5 @@
+import type { TerminologyItem } from './types';
+
 export type AIOptimizerBackend = 'groq' | 'openai';
 
 export interface AIOptimizerConfig {
@@ -28,7 +30,7 @@ export const AVAILABLE_AI_BACKENDS: AIOptimizerConfig[] = [
   },
 ];
 
-export const DEFAULT_PROMPT = `你是专业的口语转写优化助手，请优化以下口语转写文本：
+export const DEFAULT_PROMPT = `你是专业的口语转写优化助手。
 
 优化规则：
 1. 去除所有填充词（嗯、啊、哦、那个、就是说、对吧、你知道、我觉得、呃、之类的等）
@@ -38,8 +40,36 @@ export const DEFAULT_PROMPT = `你是专业的口语转写优化助手，请优�
 5. 不要改写原意，不要添加额外内容
 6. 【重要】严格保留原文的语言：中文就是中文，英文就是英文，中英夹杂就保留中英夹杂，绝对不要进行任何翻译
 7. 仅返回优化后的文本，不需要任何解释说明
+`;
 
-需要优化的文本：`;
+/**
+ * Combines the user's optimization instructions with terminology rules.
+ * Terminology is intentionally kept in the optimization prompt as a
+ * one-way normalization rule: an already-correct target must not be changed.
+ */
+export function buildOptimizationPrompt(
+  basePrompt: string,
+  terminology: TerminologyItem[] = [],
+): string {
+  const validTerms = terminology.filter(term => term.source.trim() && term.target.trim());
+  if (validTerms.length === 0) return basePrompt;
+
+  const terminologyRules = `
+
+---
+### 专业术语规范（高优先级，必须严格遵守）
+术语表中的映射是单向规范化规则：source → target，不是双向替换、翻译或自由联想。
+1. 只有当原始转写文本实际出现 source（或 source 中列出的别名）时，才可以将其规范为 target。
+2. 如果原始转写已经是 target，target 就是正确结果，必须逐字保留；绝对不能改回 source、近音词、别名或其他写法。
+3. 不要因为上下文、语法润色或表达习惯，在原文没有命中 source 时主动添加或替换成 target。
+4. 术语的拼写和方向优先于一般的措辞优化；不要输出术语替换说明，只返回优化后的正文。
+
+术语映射：
+${validTerms.map(term => `- ${term.source.trim()} → ${term.target.trim()}`).join('\n')}
+---`;
+
+  return `${basePrompt.trimEnd()}${terminologyRules}`;
+}
 
 export class AIOptimizer {
   private apiKey: string = '';

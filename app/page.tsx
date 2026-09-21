@@ -7,7 +7,7 @@ import HistoryPanel from '@/components/HistoryPanel';
 import ActionButtons from '@/components/ActionButtons';
 import { ASRClient, ASRBackend, AVAILABLE_BACKENDS } from '@/lib/asr-client';
 import { GladiaLiveClient, GladiaTranscriptEvent } from '@/lib/gladia-live-client';
-import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
+import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, buildOptimizationPrompt, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
 import { ASRResult, RecordingState, TerminologyItem, TranscriptionRecord } from '@/lib/types';
 import { storage } from '@/lib/storage';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -127,9 +127,7 @@ export default function Home() {
     setError(null);
 
     try {
-      // 拼接术语对照表到提示词末尾
-      const terminologyPrompt = storage.getTerminologyPrompt();
-      const finalPrompt = aiPrompt + terminologyPrompt;
+      const finalPrompt = buildOptimizationPrompt(aiPrompt, terminology);
       
       const optimizer = new AIOptimizer(aiApiKey, aiBackend, finalPrompt);
       if (aiModel) optimizer.setModel(aiModel);
@@ -146,7 +144,7 @@ export default function Home() {
     } finally {
       setIsOptimizing(false);
     }
-  }, [transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, t]);
+  }, [transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, t]);
 
   const handleResetPrompt = useCallback(() => {
     setAiPrompt(DEFAULT_PROMPT);
@@ -248,9 +246,7 @@ export default function Home() {
 
         // 自动优化
         if (autoOptimize && aiApiKey.trim()) {
-          // 拼接术语对照表到提示词末尾
-          const terminologyPrompt = storage.getTerminologyPrompt();
-          const finalPrompt = aiPrompt + terminologyPrompt;
+          const finalPrompt = buildOptimizationPrompt(aiPrompt, terminology);
           
           const optimizer = new AIOptimizer(aiApiKey, aiBackend, finalPrompt);
           if (aiModel) optimizer.setModel(aiModel);
@@ -290,7 +286,7 @@ export default function Home() {
     } finally {
       setIsProcessing(false);
     }
-  }, [apiKey, selectedBackend, getASRClient, autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, autoCopyOptimized, t]);
+  }, [apiKey, selectedBackend, getASRClient, autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, autoCopyOptimized, t]);
 
   // 处理录音完成
   const handleAudioComplete = useCallback(async (wavData: Uint8Array, duration: number) => {
@@ -342,8 +338,7 @@ export default function Home() {
       let finalOptimizedText = '';
 
       if (autoOptimize && aiApiKey.trim()) {
-        const terminologyPrompt = storage.getTerminologyPrompt();
-        const finalPrompt = aiPrompt + terminologyPrompt;
+        const finalPrompt = buildOptimizationPrompt(aiPrompt, terminology);
         const optimizer = new AIOptimizer(aiApiKey, aiBackend, finalPrompt);
         if (aiModel) optimizer.setModel(aiModel);
         if (aiBaseUrl) optimizer.setBaseUrl(aiBaseUrl);
@@ -376,7 +371,7 @@ export default function Home() {
     } finally {
       setIsProcessing(false);
     }
-  }, [autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, autoCopyOptimized, t]);
+  }, [autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, autoCopyOptimized, t]);
 
   // 处理录音状态变化
   const handleStateChange = useCallback(async (state: RecordingState) => {
