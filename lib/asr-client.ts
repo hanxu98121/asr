@@ -1,5 +1,12 @@
 import { ASRResult } from './types';
 import type { TerminologyItem } from './types';
+import { compressRecording } from './audio-compression';
+import { readSTTHttpError, STTError } from './stt-errors';
+
+export interface RecognitionOptions {
+  compressAudio?: boolean;
+  signal?: AbortSignal;
+}
 
 export type ASRBackend = 'elevenlabs' | 'soniox' | 'groq' | 'openai' | 'gladia' | 'gladia-realtime';
 
@@ -107,34 +114,47 @@ export class ASRClient {
   /**
    * 识别音频文件
    */
-  async recognizeAudio(audioBlob: Blob, fileName: string = 'audio.wav'): Promise<ASRResult> {
+  async recognizeAudio(audioBlob: Blob, fileName: string = 'audio.wav', options: RecognitionOptions = {}): Promise<ASRResult> {
     if (!this.apiKey) {
       throw new Error('Please enter your API Key first');
     }
 
-    const formData = new FormData();
-    formData.append('audio', audioBlob, fileName);
-    formData.append('apiKey', this.apiKey);
-    formData.append('language', this.language);
-    formData.append('backend', this.backend);
-    if (this.backend === 'openai') {
-      if (this.model) formData.append('model', this.model);
-      if (this.baseUrl) formData.append('baseUrl', this.baseUrl);
-    }
-    if (this.terminology.length > 0) {
-      formData.append('terminology', JSON.stringify(this.terminology));
-    }
-
     try {
+      options.signal?.throwIfAborted();
+      if (options.compressAudio) {
+        try {
+          audioBlob = await compressRecording(audioBlob, options.signal);
+          fileName = fileName.replace(/\.[^.]+$/, '') + '.mp3';
+        } catch (error) {
+          if (options.signal?.aborted) throw error;
+          throw new STTError('Audio compression failed. Disable compression and retry.', 'COMPRESSION_FAILED');
+        }
+      }
+      options.signal?.throwIfAborted();
+      const formData = new FormData();
+      formData.append('audio', audioBlob, fileName);
+      formData.append('apiKey', this.apiKey);
+      formData.append('language', this.language);
+      formData.append('backend', this.backend);
+      if (this.backend === 'openai') {
+        if (this.model) formData.append('model', this.model);
+        if (this.baseUrl) formData.append('baseUrl', this.baseUrl);
+      }
+      if (this.terminology.length > 0) {
+        formData.append('terminology', JSON.stringify(this.terminology));
+      }
+
       const response = await fetch('/api/stt', {
         method: 'POST',
         body: formData,
+        signal: options.signal,
       });
 
+      if (!response.ok) throw await readSTTHttpError(response, 'Recognition service failed');
       const result = await response.json();
 
       if (!result.success) {
-        throw new Error(result.error || 'Recognition failed');
+        throw new STTError(result.error || 'Recognition failed', result.errorCode || 'SERVICE_ERROR');
       }
 
       return {
@@ -153,6 +173,7 @@ export class ASRClient {
         isFinal: true,
         timestamp: Date.now(),
         error: (error as Error).message,
+        errorCode: error instanceof STTError ? error.code : 'SERVICE_ERROR',
       };
     }
   }

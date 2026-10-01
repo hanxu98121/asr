@@ -1,3 +1,4 @@
+import { readSTTHttpError } from '../../../../lib/stt-errors';
 /**
  * Groq ASR Provider
  * OpenAI-compatible API for Whisper
@@ -23,7 +24,7 @@ export class GroqProvider implements ASRProvider {
     const { apiKey, language = 'zh', model = 'whisper-large-v3-turbo' } = config;
 
     const form = new FormData();
-    form.append('file', new Blob([new Uint8Array(audioBuffer)]), fileName);
+    form.append('file', new Blob([new Uint8Array(audioBuffer)], { type: config.mimeType || 'audio/wav' }), fileName);
     form.append('model', model);
 
     if (language && language !== 'auto') {
@@ -35,6 +36,7 @@ export class GroqProvider implements ASRProvider {
 
     const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
       method: 'POST',
+      signal: config.signal,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
@@ -42,10 +44,7 @@ export class GroqProvider implements ASRProvider {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(
-        errorData?.error?.message || `Groq API error: ${response.status}`
-      );
+      throw await readSTTHttpError(response, 'groq ASR request failed');
     }
 
     const result = await response.json();

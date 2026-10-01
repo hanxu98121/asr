@@ -7,6 +7,7 @@ English version: [README.en.md](README.en.md)
 ## 功能
 
 - 浏览器端录音和转写
+- 可选本机 MP3 压缩上传（默认开启），取消勾选可上传原始 WAV
 - 录音撤销与继续上次：恢复录音前状态，或接着追加音频和文字
 - 支持多家 ASR 后端切换和自动语言检测
 - Gladia Real Time WebSocket 实时转写，提供 partial/final 中间结果
@@ -41,6 +42,16 @@ English version: [README.en.md](README.en.md)
 
 OpenRouter 示例：Base URL 为 `https://openrouter.ai/api/v1`，模型为 `openai/whisper-large-v3`，填入 OpenRouter API Key。参见 [OpenRouter 音频 API 说明](https://openrouter.ai/blog/announcing-audio-apis/)。
 
+### 音频压缩上传
+
+ASR 后端选择框下的“压缩音频上传”默认开启。文件识别前，浏览器在本机 Web Worker 中将录音编码为 16 kHz 单声道、48 kbps MP3；取消勾选则上传原始未压缩 WAV。原始 WAV 始终用于回放和续录合并，重新识别时按当前开关生成上传副本。设置保存在浏览器，并随配置导入／导出；旧配置没有这个字段时保留当前选择。录音或处理期间不能切换；正常识别、续录新增音频和整段重新识别都遵循该设置。
+
+ElevenLabs、Soniox、Groq、OpenAI 官方和 Gladia Async 均支持 MP3。自定义 OpenAI-compatible 服务仍需自行确认格式支持；若服务拒绝 MP3，取消勾选后重新识别。压缩失败时保留录音，不会自动再次提交 WAV。Gladia Real Time 的实时 PCM 音频流不受此设置影响，其录音文件重新识别仍遵循开关。
+
+48 kbps MP3 每分钟约 0.36 MB，10 分钟约 3.6 MB，实际大小略有变化；这是有损压缩，识别质量应按实际音频验证。压缩不能保证任意长度录音都可上传，Vercel 的 4.5 MB 请求体限制仍然适用。
+
+MP3 编码使用 LGPL-3.0 的 [`@breezystack/lamejs`](https://github.com/shijinyu/lamejs)，基于 [LAME](https://lame.sourceforge.net/)；本项目未修改编码器。
+
 ## 支持的 AI 后端
 
 AI 优化功能当前支持以下后端，同样由用户在浏览器端输入 API Key。
@@ -62,7 +73,7 @@ AI 优化请求使用 OpenAI Chat Completions 格式。界面允许覆盖默认�
 
 ### 环境要求
 
-- Node.js 18+
+- Node.js 20.9+（运行回归测试建议使用 Node.js 22+）
 
 ### 本地开发
 
@@ -82,11 +93,23 @@ npm run build
 npm start
 ```
 
+## 本地验证
+
+```bash
+npx tsc --noEmit
+node --import tsx --test lib/__tests__/*.test.ts
+npm run build
+```
+
+浏览器回归需提供 Playwright（可通过 `NODE_PATH`）和可用的 Chrome；先启动开发服务器（例如 `npm run dev -- --port 3011`），然后设置 `ASR_TEST_URL` 为应用地址（默认 `http://localhost:3011`），运行 `node lib/__tests__/recording-browser.cjs` 和 `node lib/__tests__/compression-browser.cjs`。后者验证真实 Worker 编码、10 分钟 MP3 的解码和末尾音频、压缩续录与整段重试、设置保存和配置导入／导出。单元测试覆盖取消编码、原始 WAV 字节保留、超过 60 秒后成功、280 秒截止时间，以及文件过大、格式不支持和非 JSON 超时错误。厂商识别质量需要用自己的有效 API Key 和同一份中英文／术语录音对比 WAV 与 MP3；浏览器回归模拟厂商响应，不验证实际识别质量。
+
 ## 部署
 
 ### Vercel
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/hanxu98121/asr)
+
+仓库的 `vercel.json` 启用 Fluid Compute，STT 路由设置 `maxDuration = 300`；服务端为完整识别流程设置 280 秒预算，涵盖上传、上游请求和轮询。Vercel Hobby 在 Fluid Compute 下支持最长 300 秒。修改后需要重新部署，并在部署详情中确认 `/api/stt` 的实际时限。Gladia Async 不再使用独立的 55 秒截止时间。超过预算时返回明确的超时错误，并保留页面上的原始录音供重试。
 
 ### Netlify
 

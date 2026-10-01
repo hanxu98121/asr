@@ -1,3 +1,4 @@
+import { readSTTHttpError } from '../../../../lib/stt-errors';
 /**
  * OpenAI-compatible audio transcription provider
  */
@@ -28,7 +29,7 @@ export class OpenAIProvider implements ASRProvider {
     }
 
     const form = new FormData();
-    form.append('file', new Blob([new Uint8Array(audioBuffer)]), fileName);
+    form.append('file', new Blob([new Uint8Array(audioBuffer)], { type: config.mimeType || 'audio/wav' }), fileName);
     form.append('model', model);
 
     if (language && language !== 'auto') {
@@ -39,6 +40,7 @@ export class OpenAIProvider implements ASRProvider {
 
     const response = await fetch(`${baseUrl}/audio/transcriptions`, {
       method: 'POST',
+      signal: config.signal,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
       },
@@ -46,10 +48,7 @@ export class OpenAIProvider implements ASRProvider {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(
-        errorData?.error?.message || `OpenAI Compatible ASR error: ${response.status}`
-      );
+      throw await readSTTHttpError(response, 'openai ASR request failed');
     }
 
     const result = await response.json();

@@ -4,6 +4,7 @@ export interface ASRResult {
   isFinal: boolean;
   timestamp: number;
   error?: string;
+  errorCode?: import('./stt-errors').STTErrorCode;
   duration?: number;
   language?: string;
 }

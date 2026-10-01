@@ -7,6 +7,7 @@ A browser-based speech-to-text tool built with Next.js. It supports live transcr
 ## Features
 
 - Browser-based recording and transcription
+- Optional local MP3 upload compression, enabled by default; uncheck to upload the original WAV
 - Discard a recording or continue the previous one, preserving and appending audio and text
 - Switch between multiple ASR backends with automatic language detection
 - Gladia Real Time WebSocket transcription with partial and final results
@@ -41,6 +42,16 @@ Select **OpenAI Compatible** to configure the ASR Base URL, model, and service A
 
 OpenRouter example: Base URL `https://openrouter.ai/api/v1`, model `openai/whisper-large-v3`, and an OpenRouter API key. See [OpenRouter audio API documentation](https://openrouter.ai/blog/announcing-audio-apis/).
 
+### Audio Upload Compression
+
+Audio upload compression is enabled by default in the ASR settings. A local Web Worker encodes the recorder's 16 kHz mono WAV to 48 kbps MP3 before file transcription. Uncheck the option to upload the original WAV. Playback and continuation merging always retain the original WAV; retry uses the current setting. The preference persists locally and is included in configuration import/export; older configurations preserve the current preference. The control is disabled while recording or processing. Normal transcription, continuation segments, and complete-recording retries all follow this setting.
+
+ElevenLabs, Soniox, Groq, official OpenAI and Gladia Async accept MP3. Custom OpenAI-compatible services must support the format themselves. If compression fails or the service rejects MP3, audio is retained so you can uncheck compression and retry; the app does not automatically submit the WAV again. Gladia Real Time keeps its existing PCM stream, while file retries follow the setting.
+
+MP3 at 48 kbps is approximately 0.36 MB per minute (3.6 MB for ten minutes), with lossy compression. Verify recognition quality against your own audio. Compression does not guarantee arbitrary recording lengths will fit: Vercel's 4.5 MB request limit still applies.
+
+MP3 encoding uses the unmodified LGPL-3.0 [`@breezystack/lamejs`](https://github.com/shijinyu/lamejs), based on [LAME](https://lame.sourceforge.net/).
+
 ## Supported AI Backends
 
 The AI optimization feature currently supports the following backends. API keys are also entered in the browser.
@@ -62,7 +73,7 @@ Terms can be added or deleted in the UI and imported/exported as JSON. Imported 
 
 ### Requirements
 
-- Node.js 18+
+- Node.js 20.9+ (Node.js 22+ recommended for regression tests)
 
 ### Local Development
 
@@ -82,11 +93,23 @@ npm run build
 npm start
 ```
 
+## Local Verification
+
+```bash
+npx tsc --noEmit
+node --import tsx --test lib/__tests__/*.test.ts
+npm run build
+```
+
+Browser regression tests require Playwright (available through `NODE_PATH` if needed) and Chrome. Start the development server (for example, `npm run dev -- --port 3011`), set `ASR_TEST_URL` to its address (default `http://localhost:3011`), then run `node lib/__tests__/recording-browser.cjs` and `node lib/__tests__/compression-browser.cjs`. The compression suite verifies the real Worker encoder, ten-minute MP3 decoding and preserved tail audio, compressed continuations and full retries, preference persistence, and configuration import/export. Unit tests cover encoder cancellation, exact original WAV bytes, success after sixty seconds, the 280-second deadline, and payload, format, and non-JSON timeout errors. To validate provider recognition quality, use valid credentials and compare WAV and MP3 versions of the same bilingual/terminology recording; browser tests mock provider responses.
+
 ## Deployment
 
 ### Vercel
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/hanxu98121/asr)
+
+`vercel.json` enables Fluid Compute and the STT route sets `maxDuration = 300`. A shared 280-second processing budget covers the complete pipeline, including uploads, upstream requests and polling; Gladia Async no longer uses a separate 55-second cutoff. Vercel Hobby supports up to 300 seconds with Fluid Compute. Redeploy after changing the configuration and verify the effective duration of `/api/stt` in the deployment details. Timeouts return a clear error, and the original recording remains available on the page for retry.
 
 ### Netlify
 

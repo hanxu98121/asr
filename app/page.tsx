@@ -47,6 +47,7 @@ export default function Home() {
   const [apiKey, setApiKey] = useState<string>('');
   const [asrModel, setAsrModel] = useState('');
   const [asrBaseUrl, setAsrBaseUrl] = useState('');
+  const [compressAudio, setCompressAudio] = useState(true);
   
   // AI Optimizer state
   const [aiBackend, setAiBackend] = useState<AIOptimizerBackend>('groq');
@@ -83,6 +84,7 @@ export default function Home() {
     setApiKey(savedKey);
     setAsrModel(localStorage.getItem('openai-asr-model') || '');
     setAsrBaseUrl(localStorage.getItem('openai-asr-base-url') || '');
+    setCompressAudio(localStorage.getItem('asr-compress-audio') !== 'false');
     setIsHydrated(true);
     
     // Load AI optimizer settings
@@ -120,6 +122,7 @@ export default function Home() {
   const recordIdRef = useRef<string | null>(null);
   const sessionRef = useRef(new RecordingSession<RecordingSnapshot>());
   const activeRecordingRef = useRef<ActiveRecording | null>(null);
+  const recognitionAbortRef = useRef<AbortController | null>(null);
   const blocked = isStarting || isRecording || isProcessing || isOptimizing;
 
   useEffect(() => {
@@ -131,6 +134,7 @@ export default function Home() {
 
   useEffect(() => () => {
     sessionRef.current.cancel();
+    recognitionAbortRef.current?.abort();
     if (activeRecordingRef.current?.timeout) clearTimeout(activeRecordingRef.current.timeout);
     gladiaLiveRef.current?.close();
   }, []);
@@ -155,6 +159,7 @@ export default function Home() {
 
   const abandonRecording = useCallback(() => {
     const snapshot = sessionRef.current.cancel();
+    recognitionAbortRef.current?.abort();
     if (activeRecordingRef.current?.timeout) clearTimeout(activeRecordingRef.current.timeout);
     activeRecordingRef.current = null;
     gladiaLiveRef.current?.close();
@@ -342,8 +347,14 @@ export default function Home() {
     try {
       const client = getASRClient();
       client.setBackend(backendOverride || selectedBackend);
-      const result = await client.recognizeAudio(audio, 'recording.wav');
+      const controller = new AbortController();
+      recognitionAbortRef.current?.abort();
+      recognitionAbortRef.current = controller;
+      const result = await client.recognizeAudio(audio, 'recording.wav', { compressAudio, signal: controller.signal });
       if (!sessionRef.current.isCurrent(id)) return;
+      if (!result.success && result.errorCode && result.errorCode !== 'SERVICE_ERROR') {
+        throw new Error(t(`error.stt.${result.errorCode}`));
+      }
       if (!result.success || !result.text?.trim()) throw new Error(result.error || t('error.empty.transcript'));
       await finalizeTranscript(appendTranscript(prefix, result.text), id, result.language);
     } catch (error) {
@@ -351,7 +362,7 @@ export default function Home() {
     } finally {
       finishProcessing(id);
     }
-  }, [getASRClient, selectedBackend, finalizeTranscript, finishProcessing, t]);
+  }, [getASRClient, selectedBackend, compressAudio, finalizeTranscript, finishProcessing, t]);
 
   const handleAudioComplete = useCallback((wavData: Uint8Array) => {
     const active = activeRecordingRef.current;
@@ -785,6 +796,18 @@ export default function Home() {
             </option>
           ))}
         </select>
+        <div className="mt-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input id="asr-compress-audio" type="checkbox" checked={compressAudio} disabled={blocked}
+              onChange={(event) => {
+                setCompressAudio(event.target.checked);
+                localStorage.setItem('asr-compress-audio', String(event.target.checked));
+              }} aria-describedby="asr-compress-help" />
+            {t('settings.asr.compress')}
+          </label>
+          <p id="asr-compress-help" className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('settings.asr.compress.help')}</p>
+          {selectedBackend === 'gladia-realtime' && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('settings.asr.compress.live')}</p>}
+        </div>
         {selectedBackend === 'openai' && (
           <div className="mt-4 space-y-3">
             <div>
@@ -941,6 +964,7 @@ export default function Home() {
                 exportTime: new Date().toISOString(),
                 asr: {
                   backend: selectedBackend,
+                  compressAudio,
                   openaiCompatible: { model: asrModel, baseUrl: asrBaseUrl },
                   apiKeys: {
                     elevenlabs: localStorage.getItem('elevenlabs-api-key') || '',
@@ -997,6 +1021,10 @@ export default function Home() {
 
                     if (confirm(t('config.import.confirm'))) {
                       // 导入ASR配置
+                      if (typeof config.asr.compressAudio === 'boolean') {
+                        setCompressAudio(config.asr.compressAudio);
+                        localStorage.setItem('asr-compress-audio', String(config.asr.compressAudio));
+                      }
                       if (config.asr.openaiCompatible) {
                         const { model, baseUrl } = config.asr.openaiCompatible;
                         if (typeof model === 'string') {

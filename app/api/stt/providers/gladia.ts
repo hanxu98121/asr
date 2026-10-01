@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+import { readSTTHttpError } from '../../../../lib/stt-errors';
 /**
  * Gladia ASR Provider
  * Pre-recorded transcription with custom vocabulary support
@@ -54,9 +56,9 @@ export class GladiaProvider implements ASRProvider {
   ): Promise<ASRResult> {
     const { apiKey, language = 'auto', terminology = [] } = config;
 
-    const uploaded = await this.uploadAudio(apiKey, audioBuffer, fileName);
-    const job = await this.createTranscriptionJob(apiKey, uploaded.audio_url, language, terminology);
-    const result = await this.waitForResult(apiKey, job.id);
+    const uploaded = await this.uploadAudio(apiKey, audioBuffer, fileName, config);
+    const job = await this.createTranscriptionJob(apiKey, uploaded.audio_url, language, terminology, config);
+    const result = await this.waitForResult(apiKey, job.id, config);
 
     const text = this.extractText(result);
     if (!text) {
@@ -71,12 +73,13 @@ export class GladiaProvider implements ASRProvider {
     };
   }
 
-  private async uploadAudio(apiKey: string, audioBuffer: Buffer, fileName: string): Promise<GladiaUploadResponse> {
+  private async uploadAudio(apiKey: string, audioBuffer: Buffer, fileName: string, config: ASRConfig): Promise<GladiaUploadResponse> {
     const form = new FormData();
-    form.append('audio', new Blob([new Uint8Array(audioBuffer)]), fileName);
+    form.append('audio', new Blob([new Uint8Array(audioBuffer)], { type: config.mimeType || 'audio/wav' }), fileName);
 
     const response = await fetch(`${this.baseUrl}/upload`, {
       method: 'POST',
+      signal: config.signal,
       headers: {
         'x-gladia-key': apiKey,
       },
@@ -84,7 +87,7 @@ export class GladiaProvider implements ASRProvider {
     });
 
     if (!response.ok) {
-      throw new Error(await this.readErrorMessage(response, 'Gladia upload failed'));
+      throw await readSTTHttpError(response, 'Gladia upload failed');
     }
 
     const data = (await response.json()) as GladiaUploadResponse;
@@ -99,7 +102,8 @@ export class GladiaProvider implements ASRProvider {
     apiKey: string,
     audioUrl: string,
     language: string,
-    terminology: Array<{ source: string; target: string }>
+    terminology: Array<{ source: string; target: string }>,
+    config: ASRConfig,
   ): Promise<GladiaInitResponse> {
     const customVocabulary = this.buildCustomVocabulary(terminology, language);
     const body: Record<string, any> = {
@@ -121,6 +125,7 @@ export class GladiaProvider implements ASRProvider {
 
     const response = await fetch(`${this.baseUrl}/pre-recorded`, {
       method: 'POST',
+      signal: config.signal,
       headers: {
         'Content-Type': 'application/json',
         'x-gladia-key': apiKey,
@@ -129,7 +134,7 @@ export class GladiaProvider implements ASRProvider {
     });
 
     if (!response.ok) {
-      throw new Error(await this.readErrorMessage(response, 'Gladia transcription request failed'));
+      throw await readSTTHttpError(response, 'Gladia transcription request failed');
     }
 
     const data = (await response.json()) as GladiaInitResponse;
@@ -140,20 +145,20 @@ export class GladiaProvider implements ASRProvider {
     return data;
   }
 
-  private async waitForResult(apiKey: string, jobId: string): Promise<GladiaGetResultResponse> {
-    const timeoutMs = 55000;
+  private async waitForResult(apiKey: string, jobId: string, config: ASRConfig): Promise<GladiaGetResultResponse> {
     const intervalMs = 1500;
-    const startedAt = Date.now();
 
-    while (Date.now() - startedAt < timeoutMs) {
+    while (true) {
+      config.signal?.throwIfAborted();
       const response = await fetch(`${this.baseUrl}/pre-recorded/${jobId}`, {
+        signal: config.signal,
         headers: {
           'x-gladia-key': apiKey,
         },
       });
 
       if (!response.ok) {
-        throw new Error(await this.readErrorMessage(response, 'Gladia status check failed'));
+        throw await readSTTHttpError(response, 'Gladia status check failed');
       }
 
       const data = (await response.json()) as GladiaGetResultResponse;
@@ -165,10 +170,9 @@ export class GladiaProvider implements ASRProvider {
         throw new Error(`Gladia transcription failed${data.error_code ? ` (${data.error_code})` : ''}`);
       }
 
-      await this.sleep(intervalMs);
+      await sleep(intervalMs, undefined, { signal: config.signal });
     }
 
-    throw new Error('Gladia transcription timed out');
   }
 
   private buildCustomVocabulary(
@@ -221,18 +225,4 @@ export class GladiaProvider implements ASRProvider {
     );
   }
 
-  private async readErrorMessage(response: Response, fallback: string): Promise<string> {
-    const errorData = await response.json().catch(() => null);
-    return (
-      errorData?.message ||
-      errorData?.error ||
-      errorData?.detail ||
-      errorData?.error?.message ||
-      `${fallback}: ${response.status}`
-    );
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
 }

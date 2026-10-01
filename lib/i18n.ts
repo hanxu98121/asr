@@ -8,6 +8,13 @@ export interface Translations {
 }
 
 export const translations: Translations = {
+  'settings.asr.compress': { zh: '压缩音频上传', en: 'Compress audio uploads' },
+  'settings.asr.compress.help': { zh: '上传前在本机压缩，减小文件体积；取消勾选则上传原始 WAV。', en: 'Compress locally before uploading to reduce file size. Uncheck to upload the original WAV.' },
+  'settings.asr.compress.live': { zh: '此设置用于录音文件上传，实时转写仍使用原有音频流。', en: 'Applies to recording file uploads. Live transcription uses the original audio stream.' },
+  'error.stt.COMPRESSION_FAILED': { zh: '音频压缩失败，录音已保留。请取消“压缩音频上传”后重新识别。', en: 'Compression failed. Audio is retained. Uncheck “Compress audio uploads” and retry.' },
+  'error.stt.UPLOAD_TOO_LARGE': { zh: '上传文件超过服务限制，录音已保留。请开启压缩或使用更短的录音。', en: 'Upload exceeds the service limit. Audio is retained. Enable compression or use a shorter recording.' },
+  'error.stt.TRANSCRIPTION_TIMEOUT': { zh: '识别处理超时，录音已保留，可重新识别。', en: 'Transcription timed out. Audio is retained for retry.' },
+  'error.stt.UNSUPPORTED_AUDIO_FORMAT': { zh: '服务不支持此音频格式，录音已保留。若已开启压缩，请取消勾选后重新识别。', en: 'The service does not support this audio format. Audio is retained. If compression is enabled, uncheck it and retry.' },
   // Header
   'header.title': {
     zh: '🎤 实时语音转文字',

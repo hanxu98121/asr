@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@ducanh2912/next-pwa": "^10.2.9",
     "@soniox/node": "^1.1.2",
     "form-data": "^4.0.5",

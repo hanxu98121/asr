@@ -7,6 +7,8 @@ import type { TerminologyItem } from '../../../../lib/types';
 
 export interface ASRConfig {
   apiKey: string;
+  signal?: AbortSignal;
+  mimeType?: string;
   language?: string;
   model?: string;
   baseUrl?: string;

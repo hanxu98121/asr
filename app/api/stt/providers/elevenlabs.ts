@@ -1,3 +1,4 @@
+import { readSTTHttpError } from '../../../../lib/stt-errors';
 /**
  * ElevenLabs ASR Provider
  */
@@ -15,7 +16,7 @@ export class ElevenLabsProvider implements ASRProvider {
     const { apiKey, language = 'zh', model = 'scribe_v1' } = config;
 
     const form = new FormData();
-    form.append('file', new Blob([new Uint8Array(audioBuffer)]), fileName);
+    form.append('file', new Blob([new Uint8Array(audioBuffer)], { type: config.mimeType || 'audio/wav' }), fileName);
     form.append('model_id', model);
     // ElevenLabs now expects empty string for auto language detection instead of 'auto'
     const langCode = language === 'auto' ? '' : language;
@@ -28,6 +29,7 @@ export class ElevenLabsProvider implements ASRProvider {
 
     const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
+      signal: config.signal,
       headers: {
         'xi-api-key': apiKey,
       },
@@ -35,10 +37,7 @@ export class ElevenLabsProvider implements ASRProvider {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(
-        errorData?.detail?.message || `ElevenLabs API error: ${response.status}`
-      );
+      throw await readSTTHttpError(response, 'elevenlabs ASR request failed');
     }
 
     const result = await response.json();
