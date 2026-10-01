@@ -7,9 +7,10 @@ import { useTranslation } from '@/lib/i18n';
 
 interface HistoryPanelProps {
   onSelectRecord?: (record: TranscriptionRecord) => void;
+  disabled?: boolean;
 }
 
-export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
+export default function HistoryPanel({ onSelectRecord, disabled = false }: HistoryPanelProps) {
   const { t } = useTranslation();
   const [records, setRecords] = useState<TranscriptionRecord[]>([]);
   const [isOpen, setIsOpen] = useState(false);
@@ -68,7 +69,7 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
 
   // 选择记录
   const handleSelectRecord = (record: TranscriptionRecord) => {
-    if (!onSelectRecord) return;
+    if (!onSelectRecord || disabled) return;
     
     // 如果勾选了显示优化版，则将优化文本传入主界面
     if (isShowingOptimized(record.id, !!record.optimizedText) && record.optimizedText) {
@@ -174,7 +175,8 @@ export default function HistoryPanel({ onSelectRecord }: HistoryPanelProps) {
                       {onSelectRecord && (
                         <button
                           onClick={() => handleSelectRecord(record)}
-                          className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
+                          disabled={disabled}
+                          className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           title={t('history.use')}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

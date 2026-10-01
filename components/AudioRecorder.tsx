@@ -10,6 +10,10 @@ interface AudioRecorderProps {
   onAudioChunk?: (pcmData: Uint8Array) => void;
   onStartRequest?: () => void;
   onStopRequest?: () => void;
+  onCancelRequest?: () => void;
+  onContinueRequest?: () => void;
+  canContinue?: boolean;
+  disabled?: boolean;
   onStateChange: (state: RecordingState) => void;
   onError: (error: string) => void;
 }
@@ -17,12 +21,14 @@ interface AudioRecorderProps {
 export interface AudioRecorderHandle {
   startRecording: () => Promise<void>;
   stopRecording: () => void;
+  cancelRecording: () => void;
 }
 
 const BUFFER_SIZE = 4096;
 
 const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
-  ({ onAudioComplete, onAudioChunk, onStartRequest, onStopRequest, onStateChange, onError }, ref) => {
+  ({ onAudioComplete, onAudioChunk, onStartRequest, onStopRequest, onCancelRequest, onContinueRequest,
+    canContinue = false, disabled = false, onStateChange, onError }, ref) => {
   const { t } = useTranslation();
   const [recordingState, setRecordingState] = useState<RecordingState>({
     isRecording: false,
@@ -41,15 +47,21 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
   const animationFrameRef = useRef<number | null>(null);
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
+  const sampleCountRef = useRef(0);
+  const startingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   // 暴露给父组件的方法
   useImperativeHandle(ref, () => ({
     startRecording,
     stopRecording,
+    cancelRecording,
   }));
 
   // 请求麦克风权限并开始录音
   const startRecording = async () => {
+    if (startingRef.current || isRecordingRef.current) return;
+    startingRef.current = true;
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error(t('audio.browser.not.support'));
@@ -64,6 +76,11 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
           autoGainControl: true,
         },
       });
+
+      if (!mountedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        throw new Error('Recorder has been unmounted');
+      }
 
       streamRef.current = stream;
 
@@ -85,15 +102,17 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
       // Browsers may ignore the requested sample rate, so use the actual rate.
       audioProcessorRef.current = new AudioProcessor(audioContext.sampleRate, 1);
       audioChunksRef.current = [];
+      sampleCountRef.current = 0;
 
       // 处理实时音频数据
       scriptProcessor.onaudioprocess = (event) => {
-        if (isPausedRef.current) return;
+        if (!isRecordingRef.current || isPausedRef.current) return;
 
         const inputData = event.inputBuffer.getChannelData(0);
         // Copy each small frame once. Repeatedly reallocating the complete recording
         // becomes prohibitively expensive during multi-minute sessions.
         audioChunksRef.current.push(new Float32Array(inputData));
+        sampleCountRef.current += inputData.length;
 
         // Gladia Live accepts binary 16 kHz / 16-bit / mono PCM frames.
         if (onAudioChunk && audioProcessorRef.current) {
@@ -106,10 +125,13 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
       source.connect(analyser);
       analyser.connect(scriptProcessor);
       scriptProcessor.connect(audioContext.destination);
+      if (audioContext.state === 'suspended') await audioContext.resume();
+      if (!mountedRef.current) throw new Error('Recorder has been unmounted');
 
       // 开始计时
       durationIntervalRef.current = setInterval(() => {
-        setRecordingState(prev => ({ ...prev, duration: prev.duration + 0.1 }));
+        if (isPausedRef.current) return;
+        setRecordingState(prev => ({ ...prev, duration: sampleCountRef.current / audioContext.sampleRate }));
       }, 100);
 
       // 开始音量检测
@@ -132,16 +154,21 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
       updateVolume();
     } catch (error) {
       console.error('Failed to start recording:', error);
-      onError((error as Error).message);
+      cleanup();
+      throw error;
+    } finally {
+      startingRef.current = false;
     }
   };
 
   // 停止录音
   const stopRecording = () => {
+    if (!isRecordingRef.current) return;
+    isRecordingRef.current = false;
     try {
       // 生成完整的WAV文件
       const totalSamples = audioChunksRef.current.reduce((total, chunk) => total + chunk.length, 0);
-      if (totalSamples > 0 && audioProcessorRef.current) {
+      if (audioProcessorRef.current) {
         const completeAudio = new Float32Array(totalSamples);
         let offset = 0;
         for (const chunk of audioChunksRef.current) {
@@ -150,27 +177,46 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
         }
         const pcmData = audioProcessorRef.current.convertToPCM(completeAudio);
         const wavData = audioProcessorRef.current.createWavFile(pcmData);
-        onAudioComplete(wavData, recordingState.duration);
+        onAudioComplete(wavData, pcmData.length / 16000);
       }
     } catch (error) {
       console.error('Failed to process audio:', error);
       onError((error as Error).message);
     } finally {
-      // 清理资源
+      cleanup();
+      const newState = { ...recordingState, isRecording: false, isPaused: false, volume: 0 };
+      setRecordingState(newState);
+      onStateChange(newState);
+    }
+  };
+
+  // Cancellation must not emit onAudioComplete, including during unmount.
+  const cancelRecording = () => {
+    cleanup();
+    const newState = { isRecording: false, isPaused: false, duration: 0, volume: 0 };
+    setRecordingState(newState);
+    onStateChange(newState);
+  };
+
+  const cleanup = () => {
       audioChunksRef.current = [];
       isRecordingRef.current = false;
       isPausedRef.current = false;
 
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
       }
 
       if (scriptProcessorRef.current) {
+        scriptProcessorRef.current.onaudioprocess = null;
         scriptProcessorRef.current.disconnect();
+        scriptProcessorRef.current = null;
       }
 
       if (analyserRef.current) {
         analyserRef.current.disconnect();
+        analyserRef.current = null;
       }
 
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -180,16 +226,14 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
 
       if (durationIntervalRef.current) {
         clearInterval(durationIntervalRef.current);
+        durationIntervalRef.current = null;
       }
 
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
 
-      const newState = { ...recordingState, isRecording: false, isPaused: false, volume: 0 };
-      setRecordingState(newState);
-      onStateChange(newState);
-    }
   };
 
   // 暂停/继续录音
@@ -200,23 +244,37 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
     isPausedRef.current = newState.isPaused;
     setRecordingState(newState);
     onStateChange(newState);
+    if (!newState.isPaused) {
+      const updateVolume = () => {
+        if (!isRecordingRef.current || isPausedRef.current || !analyserRef.current) return;
+        const data = new Uint8Array(analyserRef.current.frequencyBinCount);
+        analyserRef.current.getByteFrequencyData(data);
+        const volume = Math.round(data.reduce((sum, n) => sum + n, 0) / data.length / 255 * 100);
+        setRecordingState(prev => ({ ...prev, volume }));
+        animationFrameRef.current = requestAnimationFrame(updateVolume);
+      };
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+      updateVolume();
+    }
   };
 
   // 组件卸载时清理
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
-      if (recordingState.isRecording) {
-        stopRecording();
-      }
+      mountedRef.current = false;
+      cleanup();
     };
-  }, [recordingState.isRecording]);
+  }, []);
 
   return (
     <div className="audio-recorder">
       {!recordingState.isRecording ? (
+        <div className="flex flex-wrap justify-center gap-3">
         <button
-          onClick={() => onStartRequest ? onStartRequest() : void startRecording()}
-          className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 flex items-center gap-2"
+          disabled={disabled}
+          onClick={() => onStartRequest ? onStartRequest() : void startRecording().catch(error => onError(error.message))}
+          className="bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-full transition-all duration-200 transform hover:scale-105 flex items-center gap-2"
         >
           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
             <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
@@ -225,8 +283,15 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
           </svg>
           {t('audio.start')}
         </button>
+        {canContinue && (
+          <button disabled={disabled} onClick={onContinueRequest}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 px-6 rounded-full">
+            {t('audio.continue.previous')}
+          </button>
+        )}
+        </div>
       ) : (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap justify-center gap-3">
           <button
             onClick={togglePause}
             className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 flex items-center gap-2"
@@ -255,6 +320,10 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
               <path d="M5 4a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V5a1 1 0 00-1-1H5z" />
             </svg>
             {t('audio.stop')}
+          </button>
+          <button onClick={() => onCancelRequest ? onCancelRequest() : cancelRecording()}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full">
+            {t('audio.cancel')}
           </button>
         </div>
       )}

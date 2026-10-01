@@ -19,6 +19,10 @@ export const translations: Translations = {
   },
 
   // AudioRecorder
+  'audio.cancel': { zh: '撤销', en: 'Discard Recording' },
+  'audio.continue.previous': { zh: '继续上次', en: 'Continue Previous' },
+  'error.empty.transcript': { zh: '没有识别到文字，可重新识别完整录音。', en: 'No speech recognized. Retry the complete recording.' },
+  'error.live.timeout': { zh: '实时转写结束超时，已保留录音，可重新识别。', en: 'Live finalization timed out. Audio is retained for retry.' },
   'audio.start': {
     zh: '开始录音',
     en: 'Start Recording'
@@ -127,6 +131,18 @@ export const translations: Translations = {
   },
 
   // ASR Settings
+  'settings.asr.baseurl': {
+    zh: 'ASR Base URL（留空使用 OpenAI）',
+    en: 'ASR Base URL (leave blank for OpenAI)'
+  },
+  'settings.asr.model': {
+    zh: 'ASR 模型（留空使用 whisper-1）',
+    en: 'ASR model (leave blank for whisper-1)'
+  },
+  'settings.asr.compatible.help': {
+    zh: '填写支持 /audio/transcriptions 的服务地址，包含 /v1 等路径前缀。OpenRouter 示例：https://openrouter.ai/api/v1，模型：openai/whisper-large-v3。使用对应服务的 API Key。',
+    en: 'Use a service supporting /audio/transcriptions, including its path prefix such as /v1. OpenRouter example: https://openrouter.ai/api/v1, model: openai/whisper-large-v3. Use that service’s API key.'
+  },
   'settings.asr.backend': {
     zh: '选择ASR后端',
     en: 'Select ASR Backend'

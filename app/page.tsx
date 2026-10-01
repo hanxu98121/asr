@@ -8,8 +8,29 @@ import ActionButtons from '@/components/ActionButtons';
 import { ASRClient, ASRBackend, AVAILABLE_BACKENDS } from '@/lib/asr-client';
 import { GladiaLiveClient, GladiaTranscriptEvent } from '@/lib/gladia-live-client';
 import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, buildOptimizationPrompt, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
-import { ASRResult, RecordingState, TerminologyItem, TranscriptionRecord } from '@/lib/types';
+import { RecordingState, TerminologyItem, TranscriptionRecord } from '@/lib/types';
 import { storage } from '@/lib/storage';
+import { RecordingSession, appendTranscript, mergeRecordingWavs, wavDuration } from '@/lib/recording-session';
+
+interface RecordingSnapshot {
+  text: string;
+  optimizedText: string;
+  audio: Blob | null;
+  duration: number;
+  recordId: string | null;
+  canContinue: boolean;
+}
+interface ActiveRecording {
+  id: number;
+  snapshot: RecordingSnapshot;
+  append: boolean;
+  backend: ASRBackend;
+  started: boolean;
+  stopped: boolean;
+  finalized: boolean;
+  audioReady: Promise<void>;
+  timeout?: ReturnType<typeof setTimeout>;
+}
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useTranslation } from '@/lib/i18n';
 
@@ -24,6 +45,8 @@ export default function Home() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [selectedBackend, setSelectedBackend] = useState<ASRBackend>('elevenlabs');
   const [apiKey, setApiKey] = useState<string>('');
+  const [asrModel, setAsrModel] = useState('');
+  const [asrBaseUrl, setAsrBaseUrl] = useState('');
   
   // AI Optimizer state
   const [aiBackend, setAiBackend] = useState<AIOptimizerBackend>('groq');
@@ -58,6 +81,8 @@ export default function Home() {
     const savedKey = localStorage.getItem(getApiKeyStorageKey(savedBackend)) || '';
     setSelectedBackend(savedBackend);
     setApiKey(savedKey);
+    setAsrModel(localStorage.getItem('openai-asr-model') || '');
+    setAsrBaseUrl(localStorage.getItem('openai-asr-base-url') || '');
     setIsHydrated(true);
     
     // Load AI optimizer settings
@@ -89,16 +114,58 @@ export default function Home() {
   const [currentAudioBlob, setCurrentAudioBlob] = useState<Blob | null>(null);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [canContinue, setCanContinue] = useState(false);
+  const busyRef = useRef(false);
+  const recordIdRef = useRef<string | null>(null);
+  const sessionRef = useRef(new RecordingSession<RecordingSnapshot>());
+  const activeRecordingRef = useRef<ActiveRecording | null>(null);
+  const blocked = isStarting || isRecording || isProcessing || isOptimizing;
+
+  useEffect(() => {
+    if (!currentAudioBlob) { setCurrentAudioUrl(null); return; }
+    const url = URL.createObjectURL(currentAudioBlob);
+    setCurrentAudioUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [currentAudioBlob]);
+
+  useEffect(() => () => {
+    sessionRef.current.cancel();
+    if (activeRecordingRef.current?.timeout) clearTimeout(activeRecordingRef.current.timeout);
+    gladiaLiveRef.current?.close();
+  }, []);
 
   const asrClientRef = useRef<ASRClient | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
   const audioRecorderRef = useRef<AudioRecorderHandle>(null);
   const gladiaLiveRef = useRef<GladiaLiveClient | null>(null);
   const gladiaFinalTextRef = useRef('');
   const gladiaPartialTextRef = useRef('');
   const currentAudioBlobRef = useRef<Blob | null>(null);
   const recordingDurationRef = useRef(0);
-  const gladiaFinalizedRef = useRef(false);
+  const restoreSnapshot = useCallback((snapshot: RecordingSnapshot) => {
+    setTranscript(snapshot.text);
+    setOptimizedText(snapshot.optimizedText);
+    currentAudioBlobRef.current = snapshot.audio;
+    setCurrentAudioBlob(snapshot.audio);
+    recordingDurationRef.current = snapshot.duration;
+    setRecordingDuration(snapshot.duration);
+    recordIdRef.current = snapshot.recordId;
+    setCanContinue(snapshot.canContinue);
+  }, []);
+
+  const abandonRecording = useCallback(() => {
+    const snapshot = sessionRef.current.cancel();
+    if (activeRecordingRef.current?.timeout) clearTimeout(activeRecordingRef.current.timeout);
+    activeRecordingRef.current = null;
+    gladiaLiveRef.current?.close();
+    gladiaLiveRef.current = null;
+    audioRecorderRef.current?.cancelRecording();
+    if (snapshot) restoreSnapshot(snapshot);
+    busyRef.current = false;
+    setIsStarting(false);
+    setIsRecording(false);
+    setIsProcessing(false);
+  }, [restoreSnapshot]);
 
   // 初始化ASR客户端
   const getASRClient = useCallback(() => {
@@ -109,11 +176,13 @@ export default function Home() {
       asrClientRef.current.setBackend(selectedBackend);
     }
     asrClientRef.current.setTerminology(terminology);
+    asrClientRef.current.setOpenAIConfig(asrModel, asrBaseUrl);
     return asrClientRef.current;
-  }, [apiKey, selectedBackend, terminology]);
+  }, [apiKey, selectedBackend, terminology, asrModel, asrBaseUrl]);
 
   // 优化文本
   const handleOptimize = useCallback(async () => {
+    if (blocked || busyRef.current) return;
     if (!transcript.trim()) {
       setError(t('error.no.transcript'));
       return;
@@ -123,7 +192,9 @@ export default function Home() {
       return;
     }
 
+    busyRef.current = true;
     setIsOptimizing(true);
+    setOptimizedText('');
     setError(null);
 
     try {
@@ -142,9 +213,10 @@ export default function Home() {
     } catch (error) {
       setError(`${t('error.optimize.failed')}${(error as Error).message}`);
     } finally {
+      busyRef.current = false;
       setIsOptimizing(false);
     }
-  }, [transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, t]);
+  }, [blocked, transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, t]);
 
   const handleResetPrompt = useCallback(() => {
     setAiPrompt(DEFAULT_PROMPT);
@@ -217,185 +289,143 @@ export default function Home() {
   }, [selectedBackend, isHydrated]);
 
 
-  // 识别音频
-  const recognizeAudio = useCallback(async (
-    audioBlob: Blob,
-    duration: number = 0,
-    backendOverride?: ASRBackend,
-  ) => {
-    const backendForRequest = backendOverride || selectedBackend;
-    if (!apiKey.trim()) {
-      const backendLabel = AVAILABLE_BACKENDS.find(b => b.name === backendForRequest)?.label || backendForRequest;
-      setError(`${t('error.no.api.key')}${backendLabel} API Key`);
-      return;
-    }
-
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      const client = getASRClient();
-      client.setBackend(backendForRequest);
-      const result = await client.recognizeAudio(audioBlob, `recording-${Date.now()}.wav`);
-
-      if (result.success && result.text) {
-        const recognizedText = result.text.trim();
-        setTranscript(recognizedText);
-
-        let finalOptimizedText = '';
-
-        // 自动优化
-        if (autoOptimize && aiApiKey.trim()) {
-          const finalPrompt = buildOptimizationPrompt(aiPrompt, terminology);
-          
-          const optimizer = new AIOptimizer(aiApiKey, aiBackend, finalPrompt);
-          if (aiModel) optimizer.setModel(aiModel);
-          if (aiBaseUrl) optimizer.setBaseUrl(aiBaseUrl);
-          const optResult = await optimizer.optimizeText(recognizedText);
-          if (optResult.success && optResult.text) {
-            finalOptimizedText = optResult.text;
-            setOptimizedText(finalOptimizedText);
-          }
-        }
-
-        // 自动复制到剪贴板
-        try {
-          const textToCopy = autoCopyOptimized && finalOptimizedText ? finalOptimizedText : recognizedText;
-          await navigator.clipboard.writeText(textToCopy);
-          setCopySuccess(true);
-          setTimeout(() => setCopySuccess(false), 2000);
-        } catch (e) {
-          // 静默处理剪贴板错误（需要用户交互才能写入）
-        }
-
-        // 保存到历史记录（不保存audioBlob，因为无法序列化为JSON）
-        const record: TranscriptionRecord = {
-          id: crypto.randomUUID(),
-          text: recognizedText,
-          optimizedText: finalOptimizedText || undefined,
-          timestamp: Date.now(),
-          duration: result.duration || duration,
-          language: result.language,
-        };
-        storage.saveRecord(record);
-      } else if (result.error) {
-        setError(`${t('error.recognize.failed')}${result.error}`);
-      }
-    } catch (error) {
-      setError(`${t('error.recognize.failed')}${(error as Error).message}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [apiKey, selectedBackend, getASRClient, autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, autoCopyOptimized, t]);
-
-  // 处理录音完成
-  const handleAudioComplete = useCallback(async (wavData: Uint8Array, duration: number) => {
-    // 生成WAV Blob
-    const audioBlob = new Blob([wavData.buffer as ArrayBuffer], { type: 'audio/wav' });
-    currentAudioBlobRef.current = audioBlob;
-    recordingDurationRef.current = duration;
-    setCurrentAudioBlob(audioBlob);
-    const audioUrl = URL.createObjectURL(audioBlob);
-    setCurrentAudioUrl(audioUrl);
-    setRecordingDuration(duration);
-
-    // 自动识别
-    // Gladia Live has already returned the transcript while audio was captured.
-    if (apiKey.trim() && selectedBackend !== 'gladia-realtime') {
-      await recognizeAudio(audioBlob, duration);
-    }
-  }, [apiKey, recognizeAudio, selectedBackend]);
-
-  const handleGladiaTranscript = useCallback((event: GladiaTranscriptEvent) => {
-    if (event.isFinal) {
-      gladiaFinalTextRef.current = `${gladiaFinalTextRef.current} ${event.text}`.trim();
-      gladiaPartialTextRef.current = '';
-    } else {
-      gladiaPartialTextRef.current = event.text;
-    }
-    setTranscript(`${gladiaFinalTextRef.current} ${gladiaPartialTextRef.current}`.trim());
-  }, []);
-
-  const handleGladiaAudioChunk = useCallback((pcmData: Uint8Array) => {
-    gladiaLiveRef.current?.sendAudio(pcmData);
-  }, []);
-
-  // Gladia Live 已经在录音过程中返回了文本，所以停止后需要单独走一遍
-  // 自动优化、自动复制和历史记录保存流程；不能再走异步文件识别分支。
-  const handleGladiaSessionComplete = useCallback(async () => {
-    if (gladiaFinalizedRef.current) return;
-    gladiaFinalizedRef.current = true;
-
-    const recognizedText = `${gladiaFinalTextRef.current} ${gladiaPartialTextRef.current}`.trim();
-    gladiaLiveRef.current = null;
-    if (!recognizedText) return;
-
-    setTranscript(recognizedText);
-    setIsProcessing(true);
-    setError(null);
-
-    try {
-      let finalOptimizedText = '';
-
-      if (autoOptimize && aiApiKey.trim()) {
-        const finalPrompt = buildOptimizationPrompt(aiPrompt, terminology);
-        const optimizer = new AIOptimizer(aiApiKey, aiBackend, finalPrompt);
+  // Shared finalization for uploaded and live audio. Each callback owns a generation.
+  const finalizeTranscript = useCallback(async (text: string, id: number, language?: string) => {
+    if (!sessionRef.current.isCurrent(id)) return;
+    setTranscript(text);
+    setOptimizedText('');
+    let optimized = '';
+    if (autoOptimize && aiApiKey.trim()) {
+      try {
+        const optimizer = new AIOptimizer(aiApiKey, aiBackend, buildOptimizationPrompt(aiPrompt, terminology));
         if (aiModel) optimizer.setModel(aiModel);
         if (aiBaseUrl) optimizer.setBaseUrl(aiBaseUrl);
-        const optResult = await optimizer.optimizeText(recognizedText);
-        if (optResult.success && optResult.text) {
-          finalOptimizedText = optResult.text;
-          setOptimizedText(finalOptimizedText);
-        }
+        const result = await optimizer.optimizeText(text);
+        if (!sessionRef.current.isCurrent(id)) return;
+        if (!result.success || !result.text) throw new Error(result.error || 'Empty optimization result');
+        optimized = result.text;
+        setOptimizedText(optimized);
+      } catch (error) {
+        if (!sessionRef.current.isCurrent(id)) return;
+        setError(t('error.optimize.failed') + (error as Error).message);
       }
-
-      try {
-        const textToCopy = autoCopyOptimized && finalOptimizedText ? finalOptimizedText : recognizedText;
-        await navigator.clipboard.writeText(textToCopy);
+    }
+    if (!sessionRef.current.isCurrent(id)) return;
+    storage.saveRecord({
+      id: recordIdRef.current || (recordIdRef.current = crypto.randomUUID()),
+      text, optimizedText: optimized || undefined,
+      timestamp: Date.now(), duration: recordingDurationRef.current, language,
+    });
+    try {
+      await navigator.clipboard.writeText(autoCopyOptimized && optimized ? optimized : text);
+      if (sessionRef.current.isCurrent(id)) {
         setCopySuccess(true);
         setTimeout(() => setCopySuccess(false), 2000);
-      } catch {
-        // 剪贴板可能需要用户手势，失败时不影响转写和优化结果。
       }
+    } catch { /* Clipboard access may require a user gesture. */ }
+  }, [autoOptimize, aiApiKey, aiBackend, aiPrompt, terminology, aiModel, aiBaseUrl, autoCopyOptimized, t]);
 
-      const record: TranscriptionRecord = {
-        id: crypto.randomUUID(),
-        text: recognizedText,
-        optimizedText: finalOptimizedText || undefined,
-        timestamp: Date.now(),
-        duration: recordingDurationRef.current,
-      };
-      storage.saveRecord(record);
-    } catch (error) {
-      setError(`${t('error.optimize.failed')}${(error as Error).message}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [autoOptimize, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, autoCopyOptimized, t]);
-
-  // 处理录音状态变化
-  const handleStateChange = useCallback(async (state: RecordingState) => {
-    setIsRecording(state.isRecording);
-    setError(null);
-
-    if (state.isRecording) {
-      // 开始录音，重置状态
-      gladiaFinalizedRef.current = false;
-      currentAudioBlobRef.current = null;
-      recordingDurationRef.current = 0;
-      setCurrentAudioBlob(null);
-      setCurrentAudioUrl(null);
-      setTranscript('');
-      setOptimizedText('');
-    }
+  const finishProcessing = useCallback((id: number) => {
+    if (!sessionRef.current.isCurrent(id)) return;
+    sessionRef.current.finish(id);
+    if (activeRecordingRef.current?.timeout) clearTimeout(activeRecordingRef.current.timeout);
+    activeRecordingRef.current = null;
+    busyRef.current = false;
+    setIsProcessing(false);
+    setCanContinue(!!currentAudioBlobRef.current);
   }, []);
 
-  // 重新识别
-  const handleReRecognize = useCallback(() => {
-    if (currentAudioBlob) {
-      recognizeAudio(currentAudioBlob, 0, selectedBackend === 'gladia-realtime' ? 'gladia' : undefined);
+  const recognizeAudio = useCallback(async (audio: Blob, id: number, prefix = '', backendOverride?: ASRBackend) => {
+    if (!sessionRef.current.isCurrent(id)) return;
+    setIsProcessing(true);
+    setError(null);
+    try {
+      const client = getASRClient();
+      client.setBackend(backendOverride || selectedBackend);
+      const result = await client.recognizeAudio(audio, 'recording.wav');
+      if (!sessionRef.current.isCurrent(id)) return;
+      if (!result.success || !result.text?.trim()) throw new Error(result.error || t('error.empty.transcript'));
+      await finalizeTranscript(appendTranscript(prefix, result.text), id, result.language);
+    } catch (error) {
+      if (sessionRef.current.isCurrent(id)) setError(t('error.recognize.failed') + (error as Error).message);
+    } finally {
+      finishProcessing(id);
     }
-  }, [currentAudioBlob, recognizeAudio, selectedBackend]);
+  }, [getASRClient, selectedBackend, finalizeTranscript, finishProcessing, t]);
+
+  const handleAudioComplete = useCallback((wavData: Uint8Array) => {
+    const active = activeRecordingRef.current;
+    if (!active || !sessionRef.current.isCurrent(active.id)) return;
+    if (wavData.length <= 44) { abandonRecording(); return; }
+    const segment = new Blob([new Uint8Array(wavData)], { type: 'audio/wav' });
+    active.audioReady = (async () => {
+      try {
+        const parts = active.append && active.snapshot.audio
+          ? [new Uint8Array(await active.snapshot.audio.arrayBuffer()), wavData] : [wavData];
+        const merged = mergeRecordingWavs(parts);
+        if (!sessionRef.current.isCurrent(active.id)) return;
+        const audio = new Blob([new Uint8Array(merged)], { type: 'audio/wav' });
+        currentAudioBlobRef.current = audio;
+        setCurrentAudioBlob(audio);
+        recordingDurationRef.current = wavDuration(merged);
+        setRecordingDuration(recordingDurationRef.current);
+        if (active.backend !== 'gladia-realtime') {
+          await recognizeAudio(segment, active.id, active.append ? active.snapshot.text : '', active.backend);
+        }
+      } catch (error) {
+        if (sessionRef.current.isCurrent(active.id)) {
+          abandonRecording();
+          setError(t('error.audio') + (error as Error).message);
+        }
+      }
+    })();
+  }, [abandonRecording, recognizeAudio, t]);
+
+  const handleGladiaTranscript = useCallback((event: GladiaTranscriptEvent, id: number) => {
+    const active = activeRecordingRef.current;
+    if (!sessionRef.current.isCurrent(id) || !active?.started || active.finalized) return;
+    if (event.isFinal) {
+      gladiaFinalTextRef.current = [gladiaFinalTextRef.current, event.text].filter(Boolean).join(' ');
+      gladiaPartialTextRef.current = '';
+    } else gladiaPartialTextRef.current = event.text;
+    const next = [gladiaFinalTextRef.current, gladiaPartialTextRef.current].filter(Boolean).join(' ');
+    setTranscript(appendTranscript(active.append ? active.snapshot.text : '', next));
+  }, []);
+
+  const handleGladiaAudioChunk = useCallback((pcm: Uint8Array) => { gladiaLiveRef.current?.sendAudio(pcm); }, []);
+
+  const handleGladiaSessionComplete = useCallback(async (id: number) => {
+    const active = activeRecordingRef.current;
+    if (!sessionRef.current.isCurrent(id) || !active?.started || active.finalized) return;
+    if (!active.stopped) {
+      active.stopped = true;
+      setIsProcessing(true);
+      audioRecorderRef.current?.stopRecording();
+    }
+    active.finalized = true;
+    if (active.timeout) clearTimeout(active.timeout);
+    await active.audioReady;
+    if (!sessionRef.current.isCurrent(id)) return;
+    gladiaLiveRef.current?.close();
+    gladiaLiveRef.current = null;
+    const next = [gladiaFinalTextRef.current, gladiaPartialTextRef.current].filter(Boolean).join(' ').trim();
+    try {
+      if (!next) {
+        setTranscript(active.append ? active.snapshot.text : '');
+        setError(t('error.empty.transcript'));
+      } else await finalizeTranscript(appendTranscript(active.append ? active.snapshot.text : '', next), id);
+    } finally { finishProcessing(id); }
+  }, [finalizeTranscript, finishProcessing, t]);
+
+  const handleStateChange = useCallback((state: RecordingState) => { setIsRecording(state.isRecording); }, []);
+
+  const handleReRecognize = useCallback(() => {
+    if (blocked || busyRef.current || !currentAudioBlob || !apiKey.trim()) return;
+    busyRef.current = true;
+    const id = sessionRef.current.begin({ text: transcript, optimizedText, audio: currentAudioBlob,
+      duration: recordingDurationRef.current, recordId: recordIdRef.current, canContinue });
+    void recognizeAudio(currentAudioBlob, id, '', selectedBackend === 'gladia-realtime' ? 'gladia' : selectedBackend);
+  }, [blocked, currentAudioBlob, apiKey, transcript, optimizedText, canContinue, recognizeAudio, selectedBackend]);
 
   // 播放录音
   const handlePlayAudio = useCallback(() => {
@@ -407,38 +437,43 @@ export default function Home() {
     }
   }, [currentAudioUrl, t]);
 
-  // 处理错误
-  const handleError = useCallback((errorMessage: string) => {
-    setError(`${t('error.audio')}${errorMessage}`);
-    setIsRecording(false);
-  }, [t]);
+  const handleError = useCallback((message: string) => {
+    abandonRecording();
+    setError(t('error.audio') + message);
+  }, [abandonRecording, t]);
 
-  // 清除内容
   const handleClear = useCallback(() => {
+    if (blocked || busyRef.current) return;
+    sessionRef.current.cancel();
     setTranscript('');
     setOptimizedText('');
     setError(null);
+    currentAudioBlobRef.current = null;
     setCurrentAudioBlob(null);
-    if (currentAudioUrl) {
-      URL.revokeObjectURL(currentAudioUrl);
-      setCurrentAudioUrl(null);
-    }
-  }, [currentAudioUrl]);
+    recordingDurationRef.current = 0;
+    setRecordingDuration(0);
+    recordIdRef.current = null;
+    setCanContinue(false);
+  }, [blocked]);
 
-  // 选择历史记录
   const handleSelectRecord = useCallback((record: TranscriptionRecord) => {
+    if (blocked || busyRef.current) return;
+    sessionRef.current.cancel();
     setTranscript(record.text);
-    setOptimizedText('');
-    // 历史记录不保存音频，所以只加载文本
+    setOptimizedText(record.optimizedText || '');
+    currentAudioBlobRef.current = null;
     setCurrentAudioBlob(null);
-    setCurrentAudioUrl(null);
-  }, []);
+    recordingDurationRef.current = record.duration;
+    setRecordingDuration(record.duration);
+    recordIdRef.current = null;
+    setCanContinue(false);
+  }, [blocked]);
 
-  // 处理文本修改
-  const handleTextChange = useCallback((newText: string) => {
-    setTranscript(newText);
+  const handleTextChange = useCallback((text: string) => {
+    if (blocked || busyRef.current) return;
+    setTranscript(text);
     setOptimizedText('');
-  }, []);
+  }, [blocked]);
 
   // 添加专业术语
   const addTerminology = useCallback(() => {
@@ -472,38 +507,81 @@ export default function Home() {
     }
   }, [transcript, optimizedText, autoCopyOptimized]);
 
-  // 开始录音
-  const handleStartRecording = useCallback(() => {
-    if (!isRecording && !isProcessing && apiKey.trim()) {
-      void (async () => {
-        try {
-          if (selectedBackend === 'gladia-realtime') {
-            gladiaFinalTextRef.current = '';
-            gladiaPartialTextRef.current = '';
-            gladiaFinalizedRef.current = false;
-            const client = new GladiaLiveClient(handleGladiaTranscript, setError, handleGladiaSessionComplete);
-            gladiaLiveRef.current = client;
-            await client.start(apiKey, 'auto', terminology);
-          }
-          await audioRecorderRef.current?.startRecording();
-        } catch (error) {
-          gladiaLiveRef.current?.close();
-          gladiaLiveRef.current = null;
-          setError((error as Error).message);
-        }
-      })();
-    } else if (!apiKey.trim()) {
-      setError(t('settings.enter.api.key'));
+  const startRecording = useCallback(async (append: boolean) => {
+    if (blocked || busyRef.current || (append && !canContinue)) return;
+    if (!apiKey.trim()) { setError(t('settings.enter.api.key')); return; }
+    busyRef.current = true;
+    setIsStarting(true);
+    setError(null);
+    const snapshot: RecordingSnapshot = { text: transcript, optimizedText, audio: currentAudioBlobRef.current,
+      duration: recordingDurationRef.current, recordId: recordIdRef.current, canContinue };
+    const id = sessionRef.current.begin(snapshot);
+    const active: ActiveRecording = { id, snapshot, append, backend: selectedBackend,
+      started: false, stopped: false, finalized: false, audioReady: Promise.resolve() };
+    activeRecordingRef.current = active;
+    gladiaFinalTextRef.current = '';
+    gladiaPartialTextRef.current = '';
+    try {
+      if (selectedBackend === 'gladia-realtime') {
+        const client = new GladiaLiveClient(
+          event => handleGladiaTranscript(event, id),
+          message => {
+            if (sessionRef.current.isCurrent(id)) {
+              setError(message);
+              if (active.stopped) void handleGladiaSessionComplete(id);
+            }
+          },
+          () => void handleGladiaSessionComplete(id),
+        );
+        gladiaLiveRef.current = client;
+        await client.start(apiKey, 'auto', terminology);
+      }
+      if (!sessionRef.current.isCurrent(id)) return;
+      if (!audioRecorderRef.current) throw new Error('Recorder unavailable');
+      await audioRecorderRef.current.startRecording();
+      if (!sessionRef.current.isCurrent(id)) return;
+      active.started = true;
+      if (!append) {
+        setTranscript('');
+        setOptimizedText('');
+        currentAudioBlobRef.current = null;
+        setCurrentAudioBlob(null);
+        recordingDurationRef.current = 0;
+        setRecordingDuration(0);
+        recordIdRef.current = crypto.randomUUID();
+      }
+      setCanContinue(false);
+    } catch (error) {
+      if (sessionRef.current.isCurrent(id)) {
+        abandonRecording();
+        setError(t('error.audio') + (error as Error).message);
+      }
+    } finally {
+      if (sessionRef.current.isCurrent(id)) setIsStarting(false);
     }
-  }, [isRecording, isProcessing, apiKey, selectedBackend, terminology, handleGladiaTranscript, handleGladiaSessionComplete, t]);
+  }, [blocked, canContinue, apiKey, transcript, optimizedText, selectedBackend, terminology,
+    handleGladiaTranscript, handleGladiaSessionComplete, abandonRecording, t]);
 
-  // 停止录音
+  const handleStartRecording = useCallback(() => { void startRecording(false); }, [startRecording]);
+  const handleContinueRecording = useCallback(() => { void startRecording(true); }, [startRecording]);
+  const handleCancelRecording = useCallback(() => { abandonRecording(); setError(null); }, [abandonRecording]);
   const handleStopRecording = useCallback(() => {
-    if (isRecording) {
-      audioRecorderRef.current?.stopRecording();
-      gladiaLiveRef.current?.stop();
+    const active = activeRecordingRef.current;
+    if (!active?.started || active.stopped || !sessionRef.current.isCurrent(active.id)) return;
+    active.stopped = true;
+    setIsProcessing(true);
+    audioRecorderRef.current?.stopRecording();
+    if (!sessionRef.current.isCurrent(active.id)) return;
+    if (active.backend === 'gladia-realtime') {
+      if (!gladiaLiveRef.current?.stop()) void handleGladiaSessionComplete(active.id);
+      else active.timeout = setTimeout(() => {
+        if (sessionRef.current.isCurrent(active.id)) {
+          setError(t('error.live.timeout'));
+          void handleGladiaSessionComplete(active.id);
+        }
+      }, 10000);
     }
-  }, [isRecording]);
+  }, [handleGladiaSessionComplete, t]);
 
   // 注册全局快捷键
   useKeyboardShortcuts({
@@ -538,6 +616,10 @@ export default function Home() {
           onAudioChunk={selectedBackend === 'gladia-realtime' ? handleGladiaAudioChunk : undefined}
           onStartRequest={handleStartRecording}
           onStopRequest={handleStopRecording}
+          onCancelRequest={handleCancelRecording}
+          onContinueRequest={handleContinueRecording}
+          canContinue={canContinue}
+          disabled={blocked}
           onStateChange={handleStateChange}
           onError={handleError}
         />
@@ -550,21 +632,21 @@ export default function Home() {
               <button
                 onClick={handlePlayAudio}
                 className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                disabled={isProcessing}
+                disabled={blocked}
               >
                 <span>▶️</span> {t('op.play')}
               </button>
               <button
                 onClick={handleReRecognize}
                 className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                disabled={isProcessing || !apiKey.trim()}
+                disabled={blocked || !apiKey.trim()}
               >
                 <span>🔄</span> {isProcessing ? t('op.processing') : t('op.retry')}
               </button>
               <button
                 onClick={handleOptimize}
                 className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                disabled={isOptimizing || !transcript.trim() || !aiApiKey.trim()}
+                disabled={blocked || !transcript.trim() || !aiApiKey.trim()}
               >
                 <span>✨</span> {isOptimizing ? t('ai.optimizing') : t('op.reoptimize')}
               </button>
@@ -634,6 +716,7 @@ export default function Home() {
           </div>
           <textarea
             value={optimizedText}
+            readOnly={blocked}
             onChange={(e) => setOptimizedText(e.target.value)}
             className="w-full h-full min-h-[100px] p-3 bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-lg text-gray-800 dark:text-gray-100 text-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
           />
@@ -642,6 +725,7 @@ export default function Home() {
 
       {/* 实时字幕区域（转写结果） */}
       <RealtimeSubtitles
+        disabled={blocked}
         text={transcript}
         isRecording={isRecording}
         onTextChange={handleTextChange}
@@ -675,13 +759,13 @@ export default function Home() {
         <ActionButtons
           text={transcript}
           onClear={handleClear}
-          disabled={isRecording || isProcessing}
+          disabled={blocked}
         />
       )}
 
       {/* 历史记录区域 */}
       <div id="history-panel">
-        <HistoryPanel onSelectRecord={handleSelectRecord} />
+        <HistoryPanel onSelectRecord={handleSelectRecord} disabled={blocked} />
       </div>
 
       {/* ASR 后端设置 */}
@@ -691,6 +775,7 @@ export default function Home() {
         </label>
         <select
           value={selectedBackend}
+          disabled={blocked}
           onChange={(e) => setSelectedBackend(e.target.value as ASRBackend)}
           className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
         >
@@ -700,6 +785,45 @@ export default function Home() {
             </option>
           ))}
         </select>
+        {selectedBackend === 'openai' && (
+          <div className="mt-4 space-y-3">
+            <div>
+              <label htmlFor="asr-base-url" className="block text-sm font-medium mb-2">
+                {t('settings.asr.baseurl')}
+              </label>
+              <input
+                id="asr-base-url"
+                disabled={blocked}
+                type="url"
+                value={asrBaseUrl}
+                onChange={(e) => {
+                  setAsrBaseUrl(e.target.value);
+                  localStorage.setItem('openai-asr-base-url', e.target.value);
+                }}
+                placeholder="https://api.openai.com/v1"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
+              <label htmlFor="asr-model" className="block text-sm font-medium mb-2">
+                {t('settings.asr.model')}
+              </label>
+              <input
+                id="asr-model"
+                disabled={blocked}
+                type="text"
+                value={asrModel}
+                onChange={(e) => {
+                  setAsrModel(e.target.value);
+                  localStorage.setItem('openai-asr-model', e.target.value);
+                }}
+                placeholder="whisper-1"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.asr.compatible.help')}</p>
+          </div>
+        )}
       </div>
 
       {/* API Key 输入 */}
@@ -717,6 +841,7 @@ export default function Home() {
                   case 'groq':
                     return 'https://console.groq.com/keys';
                   case 'openai':
+                    if (/^https:\/\/openrouter\.ai(?:\/|$)/i.test(asrBaseUrl.trim())) return 'https://openrouter.ai/keys';
                     return 'https://platform.openai.com/api-keys';
                   case 'gladia':
                   case 'gladia-realtime':
@@ -769,6 +894,7 @@ export default function Home() {
         <input
           type="password"
           name="asr-api-key"
+          disabled={blocked}
           autoComplete="off"
           value={apiKey}
           onChange={(e) => {
@@ -815,6 +941,7 @@ export default function Home() {
                 exportTime: new Date().toISOString(),
                 asr: {
                   backend: selectedBackend,
+                  openaiCompatible: { model: asrModel, baseUrl: asrBaseUrl },
                   apiKeys: {
                     elevenlabs: localStorage.getItem('elevenlabs-api-key') || '',
                     soniox: localStorage.getItem('soniox-api-key') || '',
@@ -851,12 +978,14 @@ export default function Home() {
             <input
               type="file"
               accept=".json"
+              disabled={blocked}
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (event) => {
+                  if (busyRef.current) return;
                   try {
                     const config = JSON.parse(event.target?.result as string);
                     
@@ -868,6 +997,17 @@ export default function Home() {
 
                     if (confirm(t('config.import.confirm'))) {
                       // 导入ASR配置
+                      if (config.asr.openaiCompatible) {
+                        const { model, baseUrl } = config.asr.openaiCompatible;
+                        if (typeof model === 'string') {
+                          setAsrModel(model);
+                          localStorage.setItem('openai-asr-model', model);
+                        }
+                        if (typeof baseUrl === 'string') {
+                          setAsrBaseUrl(baseUrl);
+                          localStorage.setItem('openai-asr-base-url', baseUrl);
+                        }
+                      }
                       if (config.asr.backend) {
                         setSelectedBackend(config.asr.backend);
                         localStorage.setItem('asr-backend', config.asr.backend);
@@ -1034,7 +1174,7 @@ export default function Home() {
           <button
             type="button"
             onClick={handleOptimize}
-            disabled={!isHydrated || isOptimizing || !transcript.trim() || !aiApiKey.trim()}
+            disabled={!isHydrated || blocked || !transcript.trim() || !aiApiKey.trim()}
             className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-purple-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isOptimizing ? (

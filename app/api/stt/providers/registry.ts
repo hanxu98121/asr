@@ -40,8 +40,8 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
   },
   {
     name: 'openai',
-    label: 'OpenAI',
-    description: 'Official OpenAI Whisper API',
+    label: 'OpenAI Compatible',
+    description: 'OpenAI-compatible audio transcription API with custom endpoint and model',
     requiresApiKey: true,
     defaultModel: 'whisper-1',
     supportsLanguageAuto: true,

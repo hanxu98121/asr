@@ -39,8 +39,8 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
   },
   {
     name: 'openai',
-    label: 'OpenAI',
-    description: 'Official OpenAI Whisper API',
+    label: 'OpenAI Compatible',
+    description: 'OpenAI-compatible audio transcription API with custom endpoint and model',
     requiresApiKey: true,
     defaultModel: 'whisper-1',
     supportsLanguageAuto: true,
@@ -66,6 +66,8 @@ export class ASRClient {
   private language: string = 'auto';
   private backend: ASRBackend = 'elevenlabs';
   private terminology: TerminologyItem[] = [];
+  private model: string = '';
+  private baseUrl: string = '';
 
   constructor(apiKey?: string, language?: string, backend?: ASRBackend) {
     if (apiKey) this.apiKey = apiKey;
@@ -83,6 +85,11 @@ export class ASRClient {
 
   setBackend(backend: ASRBackend): void {
     this.backend = backend;
+  }
+
+  setOpenAIConfig(model: string, baseUrl: string): void {
+    this.model = model.trim();
+    this.baseUrl = baseUrl.trim();
   }
 
   setTerminology(terminology: TerminologyItem[]): void {
@@ -110,6 +117,10 @@ export class ASRClient {
     formData.append('apiKey', this.apiKey);
     formData.append('language', this.language);
     formData.append('backend', this.backend);
+    if (this.backend === 'openai') {
+      if (this.model) formData.append('model', this.model);
+      if (this.baseUrl) formData.append('baseUrl', this.baseUrl);
+    }
     if (this.terminology.length > 0) {
       formData.append('terminology', JSON.stringify(this.terminology));
     }

@@ -7,6 +7,7 @@ English version: [README.en.md](README.en.md)
 ## 功能
 
 - 浏览器端录音和转写
+- 录音撤销与继续上次：恢复录音前状态，或接着追加音频和文字
 - 支持多家 ASR 后端切换和自动语言检测
 - Gladia Real Time WebSocket 实时转写，提供 partial/final 中间结果
 - 支持录音回放和重新识别
@@ -21,6 +22,8 @@ English version: [README.en.md](README.en.md)
 
 ## 支持的 ASR 后端
 
+录音中可暂停、停止或**撤销**。撤销会丢弃本次录音并恢复录音前的内容；续录时撤销只丢弃新增部分。停止并处理完成后，点击**继续上次**可以接着录，保留原文、合并完整音频，并对整篇内容执行自动优化。同一份录音的续录更新同一条历史记录。暂停不计入录音时长。继续上次仅对当前页面的录音有效，刷新、清空或加载历史后不可续录。
+
 所有 ASR 后端都需要用户自行提供 API Key，并在浏览器端配置。
 
 | 后端 | 说明 | 默认模型 |
@@ -28,11 +31,15 @@ English version: [README.en.md](README.en.md)
 | ElevenLabs | 高质量语音识别 | `scribe_v1` |
 | Soniox | 异步转写，响应较快 | `stt-async-v4` |
 | Groq | 通过 Groq 的 OpenAI-compatible API 调用 Whisper | `whisper-large-v3-turbo` |
-| OpenAI | 官方 Whisper API | `whisper-1` |
+| OpenAI Compatible | OpenAI 及兼容的音频转写 API，可配置 Base URL 和模型 | `whisper-1` |
 | Gladia (Async) | 预录音频异步转写，支持 custom vocabulary | 使用 Gladia 预录音 API 的默认模型配置 |
 | Gladia Real Time | 通过 WebSocket 发送 16 kHz / 16-bit / mono PCM，返回 partial/final 转写结果 | `solaria-1` |
 
 所有 ASR 后端都需要用户在浏览器设置中输入对应的 API Key。语言可以选择自动检测或指定语言。Gladia 两种模式都支持将术语库作为 custom vocabulary 传给识别服务；实时模式在录音过程中直接展示中间结果，停止录音后继续执行自动优化、复制和历史保存流程。
+
+选择 **OpenAI Compatible** 后，可填写 ASR Base URL、模型名称及对应服务的 API Key。留空地址和模型时，使用 `https://api.openai.com/v1` 和 `whisper-1`。地址应包含服务的路径前缀，程序会追加 `/audio/transcriptions`；服务必须支持该接口的 multipart 音频上传和 JSON 转写响应，仅兼容 Chat Completions 的服务不适用。设置会保存在浏览器，并随应用配置导入/导出；原有 OpenAI API Key 配置继续有效。
+
+OpenRouter 示例：Base URL 为 `https://openrouter.ai/api/v1`，模型为 `openai/whisper-large-v3`，填入 OpenRouter API Key。参见 [OpenRouter 音频 API 说明](https://openrouter.ai/blog/announcing-audio-apis/)。
 
 ## 支持的 AI 后端
 

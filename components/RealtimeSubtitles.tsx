@@ -6,10 +6,11 @@ import { useTranslation } from '@/lib/i18n';
 interface RealtimeSubtitlesProps {
   text: string;
   isRecording: boolean;
+  disabled?: boolean;
   onTextChange?: (text: string) => void;
 }
 
-export default function RealtimeSubtitles({ text, isRecording, onTextChange }: RealtimeSubtitlesProps) {
+export default function RealtimeSubtitles({ text, isRecording, disabled = false, onTextChange }: RealtimeSubtitlesProps) {
   const { t } = useTranslation();
   const [editableText, setEditableText] = useState(text);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,7 +58,7 @@ export default function RealtimeSubtitles({ text, isRecording, onTextChange }: R
           onChange={handleTextChange}
           placeholder={isRecording ? t('subtitles.listening') : t('subtitles.placeholder')}
           className="w-full h-full min-h-[300px] p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-800 dark:text-gray-100 text-lg leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          disabled={isRecording}
+          disabled={isRecording || disabled}
         />
       </div>
       {isRecording && (

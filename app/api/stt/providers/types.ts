@@ -9,6 +9,7 @@ export interface ASRConfig {
   apiKey: string;
   language?: string;
   model?: string;
+  baseUrl?: string;
   enablePunctuation?: boolean;
   terminology?: TerminologyItem[];
   [key: string]: any;

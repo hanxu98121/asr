@@ -13,6 +13,8 @@ export async function POST(request: NextRequest) {
     const apiKey = formData.get('apiKey') as string | null;
     const language = (formData.get('language') as string) || 'auto';
     const backend = (formData.get('backend') as string) || 'elevenlabs';
+    const model = formData.get('model');
+    const baseUrl = formData.get('baseUrl');
     const terminologyRaw = formData.get('terminology') as string | null;
 
     let terminology: TerminologyItem[] = [];
@@ -64,6 +66,10 @@ export async function POST(request: NextRequest) {
       apiKey,
       language,
       terminology,
+      ...(backend === 'openai' ? {
+        model: typeof model === 'string' ? model : undefined,
+        baseUrl: typeof baseUrl === 'string' ? baseUrl : undefined,
+      } : {}),
     });
 
     return NextResponse.json({

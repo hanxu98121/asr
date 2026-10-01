@@ -27,6 +27,7 @@ export class GladiaLiveClient {
   private intentionalClose = false;
   private stopRequested = false;
   private completeNotified = false;
+  private cancelled = false;
 
   constructor(
     private readonly onTranscript: (event: GladiaTranscriptEvent) => void,
@@ -40,6 +41,7 @@ export class GladiaLiveClient {
     terminology: Array<{ source: string; target: string }> = [],
   ): Promise<void> {
     this.intentionalClose = false;
+    this.cancelled = false;
     this.stopRequested = false;
     this.completeNotified = false;
     const relayUrl = process.env.NEXT_PUBLIC_GLADIA_RELAY_URL?.trim();
@@ -66,6 +68,7 @@ export class GladiaLiveClient {
       }),
     });
     const session = await response.json();
+    if (this.cancelled) return;
     if (!response.ok || !session.success || !session.url) {
       throw new Error(session.error || 'Unable to start Gladia live session');
     }
@@ -84,6 +87,7 @@ export class GladiaLiveClient {
         resolve();
       };
       socket.onerror = () => {
+        if (this.cancelled) return;
         if (!opened) reject(new Error('Gladia WebSocket connection failed'));
         else this.onError('Gladia WebSocket connection failed');
       };
@@ -109,15 +113,19 @@ export class GladiaLiveClient {
     }
   }
 
-  stop(): void {
+  stop(): boolean {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.intentionalClose = true;
       this.stopRequested = true;
       this.socket.send(JSON.stringify({ type: 'stop_recording' }));
+      return true;
     }
+    return false;
   }
 
   close(): void {
+    this.cancelled = true;
+    this.stopRequested = false;
     this.intentionalClose = true;
     this.socket?.close();
     this.socket = null;
@@ -137,6 +145,7 @@ export class GladiaLiveClient {
       }
 
       const message = JSON.parse(text) as GladiaLiveMessage;
+      if (this.cancelled || this.completeNotified) return;
       if (message.type === 'transcript' && message.data?.utterance?.text) {
         this.onTranscript({
           id: message.data.id || crypto.randomUUID(),
@@ -181,7 +190,7 @@ export class GladiaLiveClient {
   }
 
   private notifyComplete(): void {
-    if (this.completeNotified) return;
+    if (this.cancelled || this.completeNotified) return;
     this.completeNotified = true;
     this.stopRequested = false;
     this.onComplete?.();

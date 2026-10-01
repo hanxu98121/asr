@@ -7,6 +7,7 @@ A browser-based speech-to-text tool built with Next.js. It supports live transcr
 ## Features
 
 - Browser-based recording and transcription
+- Discard a recording or continue the previous one, preserving and appending audio and text
 - Switch between multiple ASR backends with automatic language detection
 - Gladia Real Time WebSocket transcription with partial and final results
 - Playback and re-transcription of the recorded audio
@@ -21,6 +22,8 @@ A browser-based speech-to-text tool built with Next.js. It supports live transcr
 
 ## Supported ASR Backends
 
+While recording, you can pause, stop, or **Discard Recording**. Discard restores the state before recording; discarding a continuation only removes the new segment. After processing finishes, **Continue Previous** appends new speech, merges the complete audio, and optimizes the entire transcript. Continuations update the same history entry. Paused time is excluded from recording duration. Continuation is available only for the current page's recording, and resets on reload, clear, or loading history.
+
 Each ASR backend requires a user-provided API key configured in the browser.
 
 | Backend | Notes | Default model |
@@ -28,11 +31,15 @@ Each ASR backend requires a user-provided API key configured in the browser.
 | ElevenLabs | High-quality speech recognition | `scribe_v1` |
 | Soniox | Async transcription with fast turnaround | `stt-async-v4` |
 | Groq | Whisper transcription through Groq's OpenAI-compatible API | `whisper-large-v3-turbo` |
-| OpenAI | Official Whisper API | `whisper-1` |
+| OpenAI Compatible | OpenAI and compatible audio transcription APIs with custom Base URL and model | `whisper-1` |
 | Gladia (Async) | Asynchronous pre-recorded transcription with custom vocabulary | Gladia pre-recorded API default model configuration |
 | Gladia Real Time | WebSocket transcription with 16 kHz / 16-bit / mono PCM and partial/final results | `solaria-1` |
 
 Every ASR backend requires an API key entered in the browser settings. The language can be auto-detected or specified explicitly. Both Gladia modes can receive the terminology list as custom vocabulary. Real-time mode displays interim results while recording and runs the existing optimization, copy, and history flow after recording stops.
+
+Select **OpenAI Compatible** to configure the ASR Base URL, model, and service API key. Blank URL and model fields default to `https://api.openai.com/v1` and `whisper-1`. Include the service path prefix; the app appends `/audio/transcriptions`. The service must support multipart audio uploads and JSON transcription responses at this endpoint; Chat Completions compatibility alone is insufficient. Settings persist in the browser and are included in configuration import/export. Existing OpenAI API key settings remain valid.
+
+OpenRouter example: Base URL `https://openrouter.ai/api/v1`, model `openai/whisper-large-v3`, and an OpenRouter API key. See [OpenRouter audio API documentation](https://openrouter.ai/blog/announcing-audio-apis/).
 
 ## Supported AI Backends
 

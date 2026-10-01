@@ -24,6 +24,8 @@ export const storage = {
 
     try {
       const records = storage.getRecords();
+      const existingIndex = records.findIndex(item => item.id === record.id);
+      if (existingIndex >= 0) records.splice(existingIndex, 1);
       records.unshift(record);
 
       // 限制历史记录数量
