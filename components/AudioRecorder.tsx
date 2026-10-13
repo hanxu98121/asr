@@ -8,6 +8,8 @@ import { useTranslation } from '@/lib/i18n';
 interface AudioRecorderProps {
   onAudioComplete: (wavData: Uint8Array, duration: number) => void;
   onAudioChunk?: (pcmData: Uint8Array) => void;
+  onAudioSegment?: (wavData: Uint8Array) => void;
+  onInsertRequest?: () => void;
   onStartRequest?: () => void;
   onStopRequest?: () => void;
   onCancelRequest?: () => void;
@@ -22,12 +24,13 @@ export interface AudioRecorderHandle {
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   cancelRecording: () => void;
+  insertRecording: () => void;
 }
 
 const BUFFER_SIZE = 4096;
 
 const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
-  ({ onAudioComplete, onAudioChunk, onStartRequest, onStopRequest, onCancelRequest, onContinueRequest,
+  ({ onAudioComplete, onAudioChunk, onAudioSegment, onInsertRequest, onStartRequest, onStopRequest, onCancelRequest, onContinueRequest,
     canContinue = false, disabled = false, onStateChange, onError }, ref) => {
   const { t } = useTranslation();
   const [recordingState, setRecordingState] = useState<RecordingState>({
@@ -50,12 +53,15 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
   const sampleCountRef = useRef(0);
   const startingRef = useRef(false);
   const mountedRef = useRef(true);
+  const segmentStartRef = useRef(0);
+  const insertedRef = useRef(false);
 
   // 暴露给父组件的方法
   useImperativeHandle(ref, () => ({
     startRecording,
     stopRecording,
     cancelRecording,
+    insertRecording,
   }));
 
   // 请求麦克风权限并开始录音
@@ -103,6 +109,8 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
       audioProcessorRef.current = new AudioProcessor(audioContext.sampleRate, 1);
       audioChunksRef.current = [];
       sampleCountRef.current = 0;
+      segmentStartRef.current = 0;
+      insertedRef.current = false;
 
       // 处理实时音频数据
       scriptProcessor.onaudioprocess = (event) => {
@@ -161,9 +169,29 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
     }
   };
 
+  // Capture only new frames, keeping the microphone and complete audio intact.
+  const insertRecording = () => {
+    if (!isRecordingRef.current || !onAudioSegment || !audioProcessorRef.current) return;
+    const end = audioChunksRef.current.length;
+    if (end === segmentStartRef.current) return;
+    try {
+      const chunks = audioChunksRef.current.slice(segmentStartRef.current, end);
+      const samples = new Float32Array(chunks.reduce((size, chunk) => size + chunk.length, 0));
+      let offset = 0;
+      for (const chunk of chunks) { samples.set(chunk, offset); offset += chunk.length; }
+      const pcm = audioProcessorRef.current.convertToPCM(samples);
+      if (!pcm.length) return;
+      const wav = audioProcessorRef.current.createWavFile(pcm);
+      segmentStartRef.current = end;
+      insertedRef.current = true;
+      onAudioSegment(wav);
+    } catch (error) { onError((error as Error).message); }
+  };
+
   // 停止录音
   const stopRecording = () => {
     if (!isRecordingRef.current) return;
+    if (insertedRef.current) insertRecording();
     isRecordingRef.current = false;
     try {
       // 生成完整的WAV文件
@@ -312,6 +340,13 @@ const AudioRecorder = forwardRef<AudioRecorderHandle, AudioRecorderProps>(
               </>
             )}
           </button>
+          {onInsertRequest && (
+            <button onClick={onInsertRequest}
+              title={t('audio.insert.help')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full">
+              {t('audio.insert')}
+            </button>
+          )}
           <button
             onClick={() => onStopRequest ? onStopRequest() : stopRecording()}
             className="bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-6 rounded-full transition-all duration-200 flex items-center gap-2"

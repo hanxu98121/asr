@@ -29,6 +29,9 @@ interface ActiveRecording {
   stopped: boolean;
   finalized: boolean;
   audioReady: Promise<void>;
+  segmentsReady: Promise<void>;
+  segmented: boolean;
+  segmentText: string;
   timeout?: ReturnType<typeof setTimeout>;
 }
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -364,6 +367,37 @@ export default function Home() {
     }
   }, [getASRClient, selectedBackend, compressAudio, finalizeTranscript, finishProcessing, t]);
 
+  const handleAudioSegment = useCallback((wavData: Uint8Array) => {
+    const active = activeRecordingRef.current;
+    if (!active || active.backend === 'gladia-realtime' || !sessionRef.current.isCurrent(active.id)) return;
+    active.segmented = true;
+    const audio = new Blob([new Uint8Array(wavData)], { type: 'audio/wav' });
+    setIsProcessing(true);
+    if (!recognitionAbortRef.current || recognitionAbortRef.current.signal.aborted) {
+      recognitionAbortRef.current = new AbortController();
+    }
+    const controller = recognitionAbortRef.current;
+    // Queue user-chosen segments in recording order; failures leave later segments usable.
+    active.segmentsReady = active.segmentsReady.then(async () => {
+      if (!sessionRef.current.isCurrent(active.id)) return;
+      try {
+        const client = getASRClient();
+        client.setBackend(active.backend);
+        const result = await client.recognizeAudio(audio, 'recording.wav', { compressAudio, signal: controller.signal });
+        if (!sessionRef.current.isCurrent(active.id)) return;
+        if (!result.success && result.errorCode && result.errorCode !== 'SERVICE_ERROR') {
+          throw new Error(t(`error.stt.${result.errorCode}`));
+        }
+        if (!result.success || !result.text?.trim()) throw new Error(result.error || t('error.empty.transcript'));
+        active.segmentText = appendTranscript(active.segmentText, result.text);
+        setTranscript(active.segmentText);
+        setOptimizedText('');
+      } catch (error) {
+        if (sessionRef.current.isCurrent(active.id)) setError(t('error.recognize.failed') + (error as Error).message);
+      }
+    });
+  }, [getASRClient, compressAudio, t]);
+
   const handleAudioComplete = useCallback((wavData: Uint8Array) => {
     const active = activeRecordingRef.current;
     if (!active || !sessionRef.current.isCurrent(active.id)) return;
@@ -381,7 +415,15 @@ export default function Home() {
         recordingDurationRef.current = wavDuration(merged);
         setRecordingDuration(recordingDurationRef.current);
         if (active.backend !== 'gladia-realtime') {
-          await recognizeAudio(segment, active.id, active.append ? active.snapshot.text : '', active.backend);
+          if (active.segmented) {
+            await active.segmentsReady;
+            if (!sessionRef.current.isCurrent(active.id)) return;
+            try {
+              if (active.segmentText.trim()) await finalizeTranscript(active.segmentText, active.id);
+            } finally { finishProcessing(active.id); }
+          } else {
+            await recognizeAudio(segment, active.id, active.append ? active.snapshot.text : '', active.backend);
+          }
         }
       } catch (error) {
         if (sessionRef.current.isCurrent(active.id)) {
@@ -390,7 +432,7 @@ export default function Home() {
         }
       }
     })();
-  }, [abandonRecording, recognizeAudio, t]);
+  }, [abandonRecording, recognizeAudio, finalizeTranscript, finishProcessing, t]);
 
   const handleGladiaTranscript = useCallback((event: GladiaTranscriptEvent, id: number) => {
     const active = activeRecordingRef.current;
@@ -528,7 +570,9 @@ export default function Home() {
       duration: recordingDurationRef.current, recordId: recordIdRef.current, canContinue };
     const id = sessionRef.current.begin(snapshot);
     const active: ActiveRecording = { id, snapshot, append, backend: selectedBackend,
-      started: false, stopped: false, finalized: false, audioReady: Promise.resolve() };
+      started: false, stopped: false, finalized: false, audioReady: Promise.resolve(),
+      segmentsReady: Promise.resolve(), segmented: false, segmentText: append ? snapshot.text : '' };
+    recognitionAbortRef.current = new AbortController();
     activeRecordingRef.current = active;
     gladiaFinalTextRef.current = '';
     gladiaPartialTextRef.current = '';
@@ -576,6 +620,12 @@ export default function Home() {
   const handleStartRecording = useCallback(() => { void startRecording(false); }, [startRecording]);
   const handleContinueRecording = useCallback(() => { void startRecording(true); }, [startRecording]);
   const handleCancelRecording = useCallback(() => { abandonRecording(); setError(null); }, [abandonRecording]);
+  const handleInsertRecording = useCallback(() => {
+    const active = activeRecordingRef.current;
+    if (!active?.started || active.stopped || active.backend === 'gladia-realtime' ||
+        !sessionRef.current.isCurrent(active.id)) return;
+    audioRecorderRef.current?.insertRecording();
+  }, []);
   const handleStopRecording = useCallback(() => {
     const active = activeRecordingRef.current;
     if (!active?.started || active.stopped || !sessionRef.current.isCurrent(active.id)) return;
@@ -624,6 +674,8 @@ export default function Home() {
         <AudioRecorder
           ref={audioRecorderRef}
           onAudioComplete={handleAudioComplete}
+          onAudioSegment={handleAudioSegment}
+          onInsertRequest={selectedBackend !== 'gladia-realtime' ? handleInsertRecording : undefined}
           onAudioChunk={selectedBackend === 'gladia-realtime' ? handleGladiaAudioChunk : undefined}
           onStartRequest={handleStartRecording}
           onStopRequest={handleStopRecording}

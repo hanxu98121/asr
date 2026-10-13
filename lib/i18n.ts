@@ -26,6 +26,8 @@ export const translations: Translations = {
   },
 
   // AudioRecorder
+  'audio.insert': { zh: 'Insert（提交本段）', en: 'Insert' },
+  'audio.insert.help': { zh: '提交上次分段之后的音频，继续录音；可反复点击。', en: 'Transcribe audio since the last segment and keep recording. Click as often as needed.' },
   'audio.cancel': { zh: '撤销', en: 'Discard Recording' },
   'audio.continue.previous': { zh: '继续上次', en: 'Continue Previous' },
   'error.empty.transcript': { zh: '没有识别到文字，可重新识别完整录音。', en: 'No speech recognized. Retry the complete recording.' },

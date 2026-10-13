@@ -7,6 +7,7 @@ A browser-based speech-to-text tool built with Next.js. It supports live transcr
 ## Features
 
 - Browser-based recording and transcription
+- Manual Insert segments for asynchronous backends, with text shown while recording and whole-transcript optimization after Stop
 - Optional local MP3 upload compression, enabled by default; uncheck to upload the original WAV
 - Discard a recording or continue the previous one, preserving and appending audio and text
 - Switch between multiple ASR backends with automatic language detection
@@ -26,6 +27,8 @@ A browser-based speech-to-text tool built with Next.js. It supports live transcr
 While recording, you can pause, stop, or **Discard Recording**. Discard restores the state before recording; discarding a continuation only removes the new segment. After processing finishes, **Continue Previous** appends new speech, merges the complete audio, and optimizes the entire transcript. Continuations update the same history entry. Paused time is excluded from recording duration. Continuation is available only for the current page's recording, and resets on reload, clear, or loading history.
 
 Each ASR backend requires a user-provided API key configured in the browser.
+
+For asynchronous backends, click **Insert** as often as needed during recording. Each click submits only audio captured since the previous segment while the microphone keeps recording. Segments are queued in recording order and their text is appended as results arrive; Insert does not run AI optimization. **Stop** submits the remaining audio, waits for all segments, then follows the automatic optimization setting to optimize the whole transcript, copy it, and save one history entry. Complete original audio remains available for playback and re-transcription. A failed segment shows an error without preventing later segments; retry the complete recording after Stop to recover missing text. Discard cancels the session and restores the previous state. Gladia Real Time retains its existing live flow.
 
 | Backend | Notes | Default model |
 | --- | --- | --- |
