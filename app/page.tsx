@@ -833,14 +833,15 @@ export default function Home() {
 
       {/* ASR 后端设置 */}
       <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        <label htmlFor="asr-backend" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           {t('settings.asr.backend')}
         </label>
         <select
+          id="asr-backend"
           value={selectedBackend}
           disabled={blocked}
           onChange={(e) => setSelectedBackend(e.target.value as ASRBackend)}
-          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          className="backend-select w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
         >
           {AVAILABLE_BACKENDS.map(backend => (
             <option key={backend.name} value={backend.name}>
@@ -1173,13 +1174,14 @@ export default function Home() {
         
         {/* 后端选择 */}
         <select
+          aria-label={t('ai.title')}
           value={aiBackend}
           onChange={(e) => {
             const newBackend = e.target.value as AIOptimizerBackend;
             setAiBackend(newBackend);
             localStorage.setItem('ai-optimizer-backend', newBackend);
           }}
-          className="w-full px-4 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          className="backend-select w-full px-4 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
         >
           {AVAILABLE_AI_BACKENDS.map(backend => (
             <option key={backend.name} value={backend.name}>

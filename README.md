@@ -11,6 +11,7 @@ English version: [README.en.md](README.en.md)
 - 可选本机 MP3 压缩上传（默认开启），取消勾选可上传原始 WAV
 - 录音撤销与继续上次：恢复录音前状态，或接着追加音频和文字
 - 支持多家 ASR 后端切换和自动语言检测
+- ASR／AI 后端下拉菜单在支持 `base-select` 的浏览器中使用整行高亮，其他浏览器保留原生菜单
 - Gladia Real Time WebSocket 实时转写，提供 partial/final 中间结果
 - 支持录音回放和重新识别
 - 自动复制转写结果到剪贴板

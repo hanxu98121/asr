@@ -2,6 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Avoid native popup highlight sizing glitches. Unsupported browsers keep
+   their native select control, including its keyboard and touch behavior. */
+@supports (appearance: base-select) {
+  .backend-select,
+  .backend-select::picker(select) {
+    appearance: base-select;
+  }
+
+  .backend-select::picker(select) {
+    box-sizing: border-box;
+    min-inline-size: anchor-size(inline);
+    margin-block-start: 4px;
+    padding: 4px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #fff;
+    color: #111827;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 15%);
+  }
+
+  .backend-select option {
+    box-sizing: border-box;
+    inline-size: 100%;
+    padding: 8px 12px;
+    border-radius: 4px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .backend-select option:hover,
+  .backend-select option:focus {
+    background: #e5e7eb;
+  }
+
+  .backend-select option:checked {
+    background: #dbeafe;
+  }
+
+  .dark .backend-select::picker(select) {
+    border-color: #4b5563;
+    background: #374151;
+    color: #f3f4f6;
+  }
+
+  .dark .backend-select option:hover,
+  .dark .backend-select option:focus {
+    background: #4b5563;
+  }
+
+  .dark .backend-select option:checked {
+    background: #1e40af;
+  }
+}
+
 @layer utilities {
   .line-clamp-2 {
     display: -webkit-box;
