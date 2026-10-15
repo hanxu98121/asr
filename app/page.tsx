@@ -5,6 +5,7 @@ import AudioRecorder, { AudioRecorderHandle } from '@/components/AudioRecorder';
 import RealtimeSubtitles from '@/components/RealtimeSubtitles';
 import HistoryPanel from '@/components/HistoryPanel';
 import ActionButtons from '@/components/ActionButtons';
+import ModelCombobox from '@/components/ModelCombobox';
 import { ASRClient, ASRBackend, AVAILABLE_BACKENDS } from '@/lib/asr-client';
 import { GladiaLiveClient, GladiaTranscriptEvent } from '@/lib/gladia-live-client';
 import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, buildOptimizationPrompt, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
@@ -1225,18 +1226,14 @@ export default function Home() {
         
         {/* 可输入的模型下拉框；模型列表按后端分别保存 */}
         <div className="flex gap-2 mb-3">
-          <input
-            type="text"
-            list="ai-model-options"
-            aria-label={t('ai.model.label')}
+          <ModelCombobox
+            key={aiBackend}
+            label={t('ai.model.label')}
             value={aiModel}
-            onChange={(e) => updateAISettings({ model: e.target.value })}
+            models={aiModels}
+            onChange={(model) => updateAISettings({ model })}
             placeholder={AVAILABLE_AI_BACKENDS.find(backend => backend.name === aiBackend)?.defaultModel}
-            className="min-w-0 flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
           />
-          <datalist id="ai-model-options">
-            {aiModels.map(model => <option key={model} value={model} />)}
-          </datalist>
           <button
             type="button"
             disabled={!aiModel.trim() || aiModels.includes(aiModel.trim())}

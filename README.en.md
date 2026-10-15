@@ -67,7 +67,7 @@ The AI optimization feature currently supports the following backends. API keys 
 
 AI optimization uses the OpenAI Chat Completions message format. The UI allows overriding the default model name and Base URL, so compatible providers can be used when their endpoint, model, and API key are compatible.
 
-Switching AI backends immediately restores each backend’s saved API key, model and Base URL. On upgrade, legacy shared settings are migrated to the previously selected backend. The model field supports dropdown selection and direct typing; Add saves a name to that backend’s list, and Delete removes the selected entry and clears the field (blank uses the backend default model). Backend settings and model lists are included in configuration import/export.
+Switching AI backends immediately restores each backend’s saved API key, model and Base URL. On upgrade, legacy shared settings are migrated to the previously selected backend. The model field supports dropdown selection and direct typing. Its arrow always opens the full saved list, allowing switching between multiple added models; Add saves a name to that backend’s list, and Delete removes the selected entry and clears the field (blank uses the backend default model). Backend settings and model lists are included in configuration import/export.
 
 ## Terminology
 
