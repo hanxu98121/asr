@@ -1089,6 +1089,7 @@ export default function Home() {
                   autoOptimize: autoOptimize,
                   autoCopyOptimized: autoCopyOptimized,
                   model: aiModel,
+                  models: aiModels,
                   baseUrl: aiBaseUrl,
                   profiles: Object.fromEntries(AVAILABLE_AI_BACKENDS.map(backend => [backend.name, loadAISettings(backend.name)])),
                   terminology: terminology
@@ -1177,7 +1178,7 @@ export default function Home() {
                         applyAISettings(importedBackend, normalizeAISettings({
                           ...loadAISettings(importedBackend),
                           ...config.aiOptimizer,
-                          models: undefined,
+                          models: config.aiOptimizer.models,
                         }, importedBackend));
                       }
                       if (config.aiOptimizer.prompt) {

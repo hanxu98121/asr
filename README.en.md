@@ -69,6 +69,8 @@ AI optimization uses the OpenAI Chat Completions message format. The UI allows o
 
 Switching AI backends immediately restores each backend’s saved API key, model and Base URL. On upgrade, legacy shared settings are migrated to the previously selected backend. The model field supports dropdown selection and direct typing. Its arrow always opens the full saved list, allowing switching between multiple added models; Add saves a name to that backend’s list, and Delete removes the selected entry and clears the field (blank uses the backend default model). Backend settings and model lists are included in configuration import/export.
 
+Configuration files support multiple saved models per backend and legacy files with only a single `model` field. Exports retain the selected `model`, the full `models` list, and all backend `profiles`; importing a legacy file adds its model to that backend’s selectable list.
+
 ## Terminology
 
 Terminology entries use the `source → target` format. They are passed to ASR backends that support custom vocabulary and to the AI optimization prompt. Optimization treats the mapping as one-way normalization: when the original transcript contains `source`, it may be normalized to `target`; if the transcript already contains `target`, that standard term must be preserved and is never replaced in the reverse direction or invented from context.
