@@ -124,6 +124,8 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentAudioBlob, setCurrentAudioBlob] = useState<Blob | null>(null);
   const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const playbackRef = useRef<HTMLAudioElement | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [canContinue, setCanContinue] = useState(false);
@@ -134,12 +136,32 @@ export default function Home() {
   const recognitionAbortRef = useRef<AbortController | null>(null);
   const blocked = isStarting || isRecording || isProcessing || isOptimizing;
 
+  const stopAudioPlayback = useCallback(() => {
+    const audio = playbackRef.current;
+    playbackRef.current = null;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    setIsPlayingAudio(false);
+  }, []);
+
   useEffect(() => {
+    if (blocked) stopAudioPlayback();
+  }, [blocked, stopAudioPlayback]);
+
+  useEffect(() => {
+    stopAudioPlayback();
     if (!currentAudioBlob) { setCurrentAudioUrl(null); return; }
     const url = URL.createObjectURL(currentAudioBlob);
     setCurrentAudioUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [currentAudioBlob]);
+    return () => {
+      stopAudioPlayback();
+      URL.revokeObjectURL(url);
+    };
+  }, [currentAudioBlob, stopAudioPlayback]);
 
   useEffect(() => () => {
     sessionRef.current.cancel();
@@ -502,13 +524,26 @@ export default function Home() {
 
   // 播放录音
   const handlePlayAudio = useCallback(() => {
-    if (currentAudioUrl) {
-      const audio = new Audio(currentAudioUrl);
-      audio.play().catch(err => {
-        setError(`${t('error.play.failed')}${err.message}`);
-      });
+    if (playbackRef.current) {
+      stopAudioPlayback();
+      return;
     }
-  }, [currentAudioUrl, t]);
+    if (!currentAudioUrl || blocked) return;
+    const audio = new Audio(currentAudioUrl);
+    playbackRef.current = audio;
+    setIsPlayingAudio(true);
+    const failPlayback = (message: string) => {
+      // Ignore a late rejection from playback that has already been stopped.
+      if (playbackRef.current !== audio) return;
+      stopAudioPlayback();
+      setError(`${t('error.play.failed')}${message}`);
+    };
+    audio.onended = () => {
+      if (playbackRef.current === audio) stopAudioPlayback();
+    };
+    audio.onerror = () => failPlayback(audio.error?.message || 'Audio playback error');
+    audio.play().catch(err => failPlayback(err.message));
+  }, [currentAudioUrl, blocked, stopAudioPlayback, t]);
 
   const handleError = useCallback((message: string) => {
     abandonRecording();
@@ -717,7 +752,7 @@ export default function Home() {
                 className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                 disabled={blocked}
               >
-                <span>▶️</span> {t('op.play')}
+                <span>{isPlayingAudio ? '⏹️' : '▶️'}</span> {t(isPlayingAudio ? 'op.stop.play' : 'op.play')}
               </button>
               <button
                 onClick={handleReRecognize}

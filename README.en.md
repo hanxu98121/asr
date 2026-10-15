@@ -13,7 +13,7 @@ A browser-based speech-to-text tool built with Next.js. It supports live transcr
 - Switch between multiple ASR backends with automatic language detection
 - Full-row highlights in ASR/AI backend menus on browsers supporting `base-select`, with native menus as a fallback
 - Gladia Real Time WebSocket transcription with partial and final results
-- Playback and re-transcription of the recorded audio
+- Playback and re-transcription of the recorded audio; the button changes to Stop Playback while playing, stops and rewinds on click, and resets when playback ends
 - Auto-copy transcription results to the clipboard
 - Local history storage for original and optional optimized text
 - AI text optimization for filler-word removal, grammar, punctuation, and readability while preserving meaning and language

@@ -317,6 +317,7 @@ export const translations: Translations = {
   },
 
   // Operation Buttons
+  'op.stop.play': { zh: '停止播放录音', en: 'Stop Playback' },
   'op.play': {
     zh: '播放录音',
     en: 'Play Recording'
