@@ -80,7 +80,7 @@ export class AIOptimizer {
 
   constructor(apiKey?: string, backend?: AIOptimizerBackend, prompt?: string) {
     if (apiKey) this.apiKey = apiKey;
-    if (backend) this.backend = backend;
+    this.setBackend(backend || 'groq');
     if (prompt) this.prompt = prompt;
   }
 
@@ -100,11 +100,11 @@ export class AIOptimizer {
   }
 
   setModel(model: string): void {
-    this.model = model;
+    this.model = model.trim() || this.getBackendConfig()?.defaultModel || '';
   }
 
   setBaseUrl(baseUrl: string): void {
-    this.baseUrl = baseUrl;
+    this.baseUrl = baseUrl.trim() || this.getBackendConfig()?.defaultBaseUrl || '';
   }
 
   getBackend(): AIOptimizerBackend {

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (backend === 'groq') {
-      modelName = model || 'llama-3.3-70b-versatile';
+      modelName = model || 'openai/gpt-oss-120b';
     } else {
       modelName = model || 'gpt-4o-mini';
     }

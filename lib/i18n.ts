@@ -218,6 +218,9 @@ export const translations: Translations = {
     zh: '复制优化后的文本（关闭则复制原文本）',
     en: 'Copy optimized text (copy original if off)'
   },
+  'ai.model.label': { zh: 'AI 模型（可选择或输入）', en: 'AI model (select or type)' },
+  'ai.model.add': { zh: '添加', en: 'Add' },
+  'ai.model.delete': { zh: '删除', en: 'Delete' },
   'ai.model.placeholder': {
     zh: 'gpt-4o-mini',
     en: 'gpt-4o-mini'

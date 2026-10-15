@@ -67,6 +67,8 @@ The AI optimization feature currently supports the following backends. API keys 
 
 AI optimization uses the OpenAI Chat Completions message format. The UI allows overriding the default model name and Base URL, so compatible providers can be used when their endpoint, model, and API key are compatible.
 
+Switching AI backends immediately restores each backend’s saved API key, model and Base URL. On upgrade, legacy shared settings are migrated to the previously selected backend. The model field supports dropdown selection and direct typing; Add saves a name to that backend’s list, and Delete removes the selected entry and clears the field (blank uses the backend default model). Backend settings and model lists are included in configuration import/export.
+
 ## Terminology
 
 Terminology entries use the `source → target` format. They are passed to ASR backends that support custom vocabulary and to the AI optimization prompt. Optimization treats the mapping as one-way normalization: when the original transcript contains `source`, it may be normalized to `target`; if the transcript already contains `target`, that standard term must be preserved and is never replaced in the reverse direction or invented from context.

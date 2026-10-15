@@ -10,6 +10,7 @@ import { GladiaLiveClient, GladiaTranscriptEvent } from '@/lib/gladia-live-clien
 import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, buildOptimizationPrompt, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
 import { RecordingState, TerminologyItem, TranscriptionRecord } from '@/lib/types';
 import { storage } from '@/lib/storage';
+import { loadAISettings, saveAISettings, normalizeAISettings, isAIBackend, type AISettings } from '@/lib/ai-settings';
 import { RecordingSession, appendTranscript, mergeRecordingWavs, wavDuration } from '@/lib/recording-session';
 
 interface RecordingSnapshot {
@@ -62,6 +63,7 @@ export default function Home() {
   const [autoCopyOptimized, setAutoCopyOptimized] = useState(true);
   const [aiModel, setAiModel] = useState<string>('');
   const [aiBaseUrl, setAiBaseUrl] = useState<string>('');
+  const [aiModels, setAiModels] = useState<string[]>([]);
   const [terminology, setTerminology] = useState<TerminologyItem[]>([]);
   const [showTerminologyPanel, setShowTerminologyPanel] = useState(false);
   const [newSource, setNewSource] = useState('');
@@ -91,13 +93,15 @@ export default function Home() {
     setIsHydrated(true);
     
     // Load AI optimizer settings
-    const savedAiBackend = (localStorage.getItem('ai-optimizer-backend') as AIOptimizerBackend) || 'groq';
-    const savedAiKey = localStorage.getItem('ai-optimizer-api-key') || '';
+    const storedAiBackend = localStorage.getItem('ai-optimizer-backend');
+    const savedAiBackend = isAIBackend(storedAiBackend) ? storedAiBackend : 'groq';
+    const savedAiSettings = loadAISettings(savedAiBackend);
+    const savedAiKey = savedAiSettings.apiKey;
     const savedAiPrompt = localStorage.getItem('ai-optimizer-prompt') || DEFAULT_PROMPT;
     const savedAutoOptimize = localStorage.getItem('ai-auto-optimize') !== 'false';
     const savedAutoCopyOptimized = localStorage.getItem('ai-auto-copy-optimized') !== 'false';
-    const savedAiModel = localStorage.getItem('ai-optimizer-model') || '';
-    const savedAiBaseUrl = localStorage.getItem('ai-optimizer-base-url') || '';
+    const savedAiModel = savedAiSettings.model;
+    const savedAiBaseUrl = savedAiSettings.baseUrl;
     const savedTerminology = storage.getTerminology();
     setAiBackend(savedAiBackend);
     setAiApiKey(savedAiKey);
@@ -106,6 +110,7 @@ export default function Home() {
     setAutoCopyOptimized(savedAutoCopyOptimized);
     setAiModel(savedAiModel);
     setAiBaseUrl(savedAiBaseUrl);
+    setAiModels(savedAiSettings.models);
     setTerminology(savedTerminology);
 
     // Add language change listener to re-render component
@@ -225,6 +230,20 @@ export default function Home() {
       setIsOptimizing(false);
     }
   }, [blocked, transcript, aiApiKey, aiBackend, aiPrompt, aiModel, aiBaseUrl, terminology, t]);
+
+  const applyAISettings = (backend: AIOptimizerBackend, settings: AISettings) => {
+    setAiBackend(backend);
+    setAiApiKey(settings.apiKey);
+    setAiModel(settings.model);
+    setAiBaseUrl(settings.baseUrl);
+    setAiModels(settings.models);
+    saveAISettings(backend, settings);
+    localStorage.setItem('ai-optimizer-backend', backend);
+  };
+
+  const updateAISettings = (changes: Partial<AISettings>) => {
+    applyAISettings(aiBackend, { apiKey: aiApiKey, model: aiModel, baseUrl: aiBaseUrl, models: aiModels, ...changes });
+  };
 
   const handleResetPrompt = useCallback(() => {
     setAiPrompt(DEFAULT_PROMPT);
@@ -1035,6 +1054,7 @@ export default function Home() {
                   autoCopyOptimized: autoCopyOptimized,
                   model: aiModel,
                   baseUrl: aiBaseUrl,
+                  profiles: Object.fromEntries(AVAILABLE_AI_BACKENDS.map(backend => [backend.name, loadAISettings(backend.name)])),
                   terminology: terminology
                 }
               };
@@ -1108,13 +1128,21 @@ export default function Home() {
                       }
 
                       // 导入AI优化器配置
-                      if (config.aiOptimizer.backend) {
-                        setAiBackend(config.aiOptimizer.backend);
-                        localStorage.setItem('ai-optimizer-backend', config.aiOptimizer.backend);
-                      }
-                      if (config.aiOptimizer.apiKey) {
-                        setAiApiKey(config.aiOptimizer.apiKey);
-                        localStorage.setItem('ai-optimizer-api-key', config.aiOptimizer.apiKey);
+                      const importedBackend = isAIBackend(config.aiOptimizer.backend) ? config.aiOptimizer.backend : aiBackend;
+                      if (config.aiOptimizer.profiles) {
+                        for (const backend of AVAILABLE_AI_BACKENDS) {
+                          const profile = config.aiOptimizer.profiles[backend.name];
+                          if (profile && typeof profile === 'object') {
+                            saveAISettings(backend.name, normalizeAISettings(profile, backend.name));
+                          }
+                        }
+                        applyAISettings(importedBackend, loadAISettings(importedBackend));
+                      } else {
+                        applyAISettings(importedBackend, normalizeAISettings({
+                          ...loadAISettings(importedBackend),
+                          ...config.aiOptimizer,
+                          models: undefined,
+                        }, importedBackend));
                       }
                       if (config.aiOptimizer.prompt) {
                         setAiPrompt(config.aiOptimizer.prompt);
@@ -1127,14 +1155,6 @@ export default function Home() {
                       if (config.aiOptimizer.autoCopyOptimized !== undefined) {
                         setAutoCopyOptimized(config.aiOptimizer.autoCopyOptimized);
                         localStorage.setItem('ai-auto-copy-optimized', String(config.aiOptimizer.autoCopyOptimized));
-                      }
-                      if (config.aiOptimizer.model) {
-                        setAiModel(config.aiOptimizer.model);
-                        localStorage.setItem('ai-optimizer-model', config.aiOptimizer.model);
-                      }
-                      if (config.aiOptimizer.baseUrl) {
-                        setAiBaseUrl(config.aiOptimizer.baseUrl);
-                        localStorage.setItem('ai-optimizer-base-url', config.aiOptimizer.baseUrl);
                       }
                       if (config.aiOptimizer.terminology) {
                         // 处理术语，自动补全缺失的id
@@ -1178,8 +1198,7 @@ export default function Home() {
           value={aiBackend}
           onChange={(e) => {
             const newBackend = e.target.value as AIOptimizerBackend;
-            setAiBackend(newBackend);
-            localStorage.setItem('ai-optimizer-backend', newBackend);
+            applyAISettings(newBackend, loadAISettings(newBackend));
           }}
           className="backend-select w-full px-4 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
         >
@@ -1198,34 +1217,47 @@ export default function Home() {
           value={aiApiKey}
           onChange={(e) => {
             const newKey = e.target.value;
-            setAiApiKey(newKey);
-            localStorage.setItem('ai-optimizer-api-key', newKey);
+            updateAISettings({ apiKey: newKey });
           }}
           placeholder={aiBackend === 'groq' ? 'gsk_...' : 'sk_...'}
           className="w-full px-4 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
         />
         
-        {/* 模型选择 */}
-        <input
-          type="text"
-          value={aiModel}
-          onChange={(e) => {
-            const newModel = e.target.value;
-            setAiModel(newModel);
-            localStorage.setItem('ai-optimizer-model', newModel);
-          }}
-          placeholder={aiBackend === 'groq' ? 'openai/gpt-oss-120b' : t('ai.model.placeholder')}
-          className="w-full px-4 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-        />
-        
+        {/* 可输入的模型下拉框；模型列表按后端分别保存 */}
+        <div className="flex gap-2 mb-3">
+          <input
+            type="text"
+            list="ai-model-options"
+            aria-label={t('ai.model.label')}
+            value={aiModel}
+            onChange={(e) => updateAISettings({ model: e.target.value })}
+            placeholder={AVAILABLE_AI_BACKENDS.find(backend => backend.name === aiBackend)?.defaultModel}
+            className="min-w-0 flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          />
+          <datalist id="ai-model-options">
+            {aiModels.map(model => <option key={model} value={model} />)}
+          </datalist>
+          <button
+            type="button"
+            disabled={!aiModel.trim() || aiModels.includes(aiModel.trim())}
+            onClick={() => updateAISettings({ model: aiModel.trim(), models: [...aiModels, aiModel.trim()] })}
+            className="px-3 py-2 bg-purple-600 text-white rounded-lg disabled:opacity-50"
+          >{t('ai.model.add')}</button>
+          <button
+            type="button"
+            disabled={!aiModels.includes(aiModel.trim())}
+            onClick={() => updateAISettings({ model: '', models: aiModels.filter(model => model !== aiModel.trim()) })}
+            className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg disabled:opacity-50"
+          >{t('ai.model.delete')}</button>
+        </div>
+
         {/* Base URL */}
         <input
           type="text"
           value={aiBaseUrl}
           onChange={(e) => {
             const newBaseUrl = e.target.value;
-            setAiBaseUrl(newBaseUrl);
-            localStorage.setItem('ai-optimizer-base-url', newBaseUrl);
+            updateAISettings({ baseUrl: newBaseUrl });
           }}
           placeholder={aiBackend === 'groq' ? 'https://api.groq.com/openai/v1' : t('ai.baseurl.placeholder')}
           className="w-full px-4 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
