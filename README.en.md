@@ -46,6 +46,8 @@ Select **OpenAI Compatible** to configure the ASR Base URL, model, and service A
 
 OpenRouter example: Base URL `https://openrouter.ai/api/v1`, model `openai/whisper-large-v3`, and an OpenRouter API key. See [OpenRouter audio API documentation](https://openrouter.ai/blog/announcing-audio-apis/).
 
+The OpenAI Compatible ASR model field supports typing, adding, deleting, and switching between multiple saved models from the full dropdown list. Configuration import/export preserves the list and current selection, and legacy single-model files remain supported. Model controls are disabled while recording or processing. These controls are available in both Chinese and English, with consistent initial rendering when restoring a saved language.
+
 ### Audio Upload Compression
 
 Audio upload compression is enabled by default in the ASR settings. A local Web Worker encodes the recorder's 16 kHz mono WAV to 48 kbps MP3 before file transcription. Uncheck the option to upload the original WAV. Playback and continuation merging always retain the original WAV; retry uses the current setting. The preference persists locally and is included in configuration import/export; older configurations preserve the current preference. The control is disabled while recording or processing. Normal transcription, continuation segments, and complete-recording retries all follow this setting.

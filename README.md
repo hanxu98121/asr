@@ -46,6 +46,8 @@ English version: [README.en.md](README.en.md)
 
 OpenRouter 示例：Base URL 为 `https://openrouter.ai/api/v1`，模型为 `openai/whisper-large-v3`，填入 OpenRouter API Key。参见 [OpenRouter 音频 API 说明](https://openrouter.ai/blog/announcing-audio-apis/)。
 
+OpenAI Compatible 的 ASR 模型框支持直接输入、添加、删除和从完整列表切换多个模型。配置导入／导出保存模型列表及当前选择，旧版单模型配置仍可导入。模型设置在录音或处理期间禁用。中英文界面均支持这些操作，加载已保存语言时保持首次渲染一致。
+
 ### 音频压缩上传
 
 ASR 后端选择框下的“压缩音频上传”默认开启。文件识别前，浏览器在本机 Web Worker 中将录音编码为 16 kHz 单声道、48 kbps MP3；取消勾选则上传原始未压缩 WAV。原始 WAV 始终用于回放和续录合并，重新识别时按当前开关生成上传副本。设置保存在浏览器，并随配置导入／导出；旧配置没有这个字段时保留当前选择。录音或处理期间不能切换；正常识别、续录新增音频和整段重新识别都遵循该设置。

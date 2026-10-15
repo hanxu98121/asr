@@ -11,6 +11,7 @@ import { GladiaLiveClient, GladiaTranscriptEvent } from '@/lib/gladia-live-clien
 import { AIOptimizer, AIOptimizerBackend, AVAILABLE_AI_BACKENDS, buildOptimizationPrompt, DEFAULT_PROMPT } from '@/lib/ai-optimizer';
 import { RecordingState, TerminologyItem, TranscriptionRecord } from '@/lib/types';
 import { storage } from '@/lib/storage';
+import { loadASRModels, normalizeASRModels } from '@/lib/asr-models';
 import { loadAISettings, saveAISettings, normalizeAISettings, isAIBackend, type AISettings } from '@/lib/ai-settings';
 import { RecordingSession, appendTranscript, mergeRecordingWavs, wavDuration } from '@/lib/recording-session';
 
@@ -51,6 +52,7 @@ export default function Home() {
   const [selectedBackend, setSelectedBackend] = useState<ASRBackend>('elevenlabs');
   const [apiKey, setApiKey] = useState<string>('');
   const [asrModel, setAsrModel] = useState('');
+  const [asrModels, setAsrModels] = useState<string[]>([]);
   const [asrBaseUrl, setAsrBaseUrl] = useState('');
   const [compressAudio, setCompressAudio] = useState(true);
   
@@ -88,7 +90,9 @@ export default function Home() {
     const savedKey = localStorage.getItem(getApiKeyStorageKey(savedBackend)) || '';
     setSelectedBackend(savedBackend);
     setApiKey(savedKey);
-    setAsrModel(localStorage.getItem('openai-asr-model') || '');
+    const savedAsrModel = localStorage.getItem('openai-asr-model') || '';
+    setAsrModel(savedAsrModel);
+    setAsrModels(loadASRModels(savedAsrModel));
     setAsrBaseUrl(localStorage.getItem('openai-asr-base-url') || '');
     setCompressAudio(localStorage.getItem('asr-compress-audio') !== 'false');
     setIsHydrated(true);
@@ -266,6 +270,15 @@ export default function Home() {
 
   const updateAISettings = (changes: Partial<AISettings>) => {
     applyAISettings(aiBackend, { apiKey: aiApiKey, model: aiModel, baseUrl: aiBaseUrl, models: aiModels, ...changes });
+  };
+
+  const updateASRModel = (model: string, models?: string[]) => {
+    setAsrModel(model);
+    localStorage.setItem('openai-asr-model', model);
+    if (models) {
+      setAsrModels(models);
+      localStorage.setItem('openai-asr-models', JSON.stringify(models));
+    }
   };
 
   const handleResetPrompt = useCallback(() => {
@@ -939,18 +952,29 @@ export default function Home() {
               <label htmlFor="asr-model" className="block text-sm font-medium mb-2">
                 {t('settings.asr.model')}
               </label>
-              <input
-                id="asr-model"
-                disabled={blocked}
-                type="text"
-                value={asrModel}
-                onChange={(e) => {
-                  setAsrModel(e.target.value);
-                  localStorage.setItem('openai-asr-model', e.target.value);
-                }}
-                placeholder="whisper-1"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              />
+              <div className="flex gap-2">
+                <ModelCombobox
+                  id="asr-model"
+                  disabled={blocked}
+                  label={t('settings.asr.model')}
+                  value={asrModel}
+                  models={asrModels}
+                  onChange={(model) => updateASRModel(model)}
+                  placeholder="whisper-1"
+                />
+                <button
+                  type="button"
+                  disabled={blocked || !asrModel.trim() || asrModels.includes(asrModel.trim())}
+                  onClick={() => updateASRModel(asrModel.trim(), [...asrModels, asrModel.trim()])}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                >{t('ai.model.add')}</button>
+                <button
+                  type="button"
+                  disabled={blocked || !asrModels.includes(asrModel.trim())}
+                  onClick={() => updateASRModel('', asrModels.filter(model => model !== asrModel.trim()))}
+                  className="px-3 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg disabled:opacity-50"
+                >{t('ai.model.delete')}</button>
+              </div>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.asr.compatible.help')}</p>
           </div>
@@ -1073,7 +1097,7 @@ export default function Home() {
                 asr: {
                   backend: selectedBackend,
                   compressAudio,
-                  openaiCompatible: { model: asrModel, baseUrl: asrBaseUrl },
+                  openaiCompatible: { model: asrModel, models: asrModels, baseUrl: asrBaseUrl },
                   apiKeys: {
                     elevenlabs: localStorage.getItem('elevenlabs-api-key') || '',
                     soniox: localStorage.getItem('soniox-api-key') || '',
@@ -1136,10 +1160,10 @@ export default function Home() {
                         localStorage.setItem('asr-compress-audio', String(config.asr.compressAudio));
                       }
                       if (config.asr.openaiCompatible) {
-                        const { model, baseUrl } = config.asr.openaiCompatible;
-                        if (typeof model === 'string') {
-                          setAsrModel(model);
-                          localStorage.setItem('openai-asr-model', model);
+                        const { model, models, baseUrl } = config.asr.openaiCompatible;
+                        if (Array.isArray(models) || typeof model === 'string') {
+                          updateASRModel(typeof model === 'string' ? model : asrModel,
+                            normalizeASRModels(models, typeof model === 'string' ? model : asrModel));
                         }
                         if (typeof baseUrl === 'string') {
                           setAsrBaseUrl(baseUrl);

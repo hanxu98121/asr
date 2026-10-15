@@ -3,6 +3,8 @@
 import { useId, useRef, useState } from 'react';
 
 interface Props {
+  id?: string;
+  disabled?: boolean;
   value: string;
   models: string[];
   label: string;
@@ -10,7 +12,7 @@ interface Props {
   onChange: (model: string) => void;
 }
 
-export default function ModelCombobox({ value, models, label, placeholder, onChange }: Props) {
+export default function ModelCombobox({ id, disabled = false, value, models, label, placeholder, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const input = useRef<HTMLInputElement>(null);
@@ -34,6 +36,8 @@ export default function ModelCombobox({ value, models, label, placeholder, onCha
     >
       <div className="flex border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
         <input
+          id={id}
+          disabled={disabled}
           ref={input}
           type="text"
           role="combobox"
@@ -65,6 +69,7 @@ export default function ModelCombobox({ value, models, label, placeholder, onCha
           className="min-w-0 w-full px-4 py-2 rounded-l-lg bg-transparent text-gray-900 dark:text-gray-100"
         />
         <button
+          disabled={disabled}
           type="button"
           aria-label={label}
           aria-expanded={open}
@@ -75,7 +80,7 @@ export default function ModelCombobox({ value, models, label, placeholder, onCha
           <span aria-hidden="true">▾</span>
         </button>
       </div>
-      {open && (
+      {open && !disabled && (
         <div id={listId} role="listbox" aria-label={label} className="absolute z-20 mt-1 max-h-60 overflow-auto w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg">
           {models.map((model, index) => (
             <button

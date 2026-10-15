@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 export type Language = 'zh' | 'en';
 
 export interface Translations {
@@ -411,10 +413,14 @@ export const translations: Translations = {
 };
 
 export function useTranslation() {
-  const getCurrentLanguage = (): Language => {
-    if (typeof window === 'undefined') return 'zh';
-    return (localStorage.getItem('language') as Language) || 'zh';
-  };
+  // Match the server language on the first render, then restore the saved choice.
+  const [language, updateLanguage] = useState<Language>('zh');
+  useEffect(() => {
+    const restoreLanguage = () => updateLanguage(localStorage.getItem('language') === 'en' ? 'en' : 'zh');
+    restoreLanguage();
+    window.addEventListener('languageChanged', restoreLanguage);
+    return () => window.removeEventListener('languageChanged', restoreLanguage);
+  }, []);
 
   const setLanguage = (lang: Language) => {
     if (typeof window === 'undefined') return;
@@ -425,13 +431,12 @@ export function useTranslation() {
   };
 
   const t = (key: string): string => {
-    const lang = getCurrentLanguage();
-    return translations[key]?.[lang] || key;
+    return translations[key]?.[language] || key;
   };
 
   return {
     t,
-    language: getCurrentLanguage(),
+    language,
     setLanguage,
   };
 }
