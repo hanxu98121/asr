@@ -1,0 +1,27 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Output is discarded so the deployment URL never lands in (public) logs.
+      - run: npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN" > /dev/null
+      - run: npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN" > /dev/null
+      - run: npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" > /dev/null
