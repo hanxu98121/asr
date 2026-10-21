@@ -13,7 +13,7 @@ export class ElevenLabsProvider implements ASRProvider {
     fileName: string,
     config: ASRConfig
   ): Promise<ASRResult> {
-    const { apiKey, language = 'zh', model = 'scribe_v1' } = config;
+    const { apiKey, language = 'zh', model = 'scribe_v2' } = config;
 
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(audioBuffer)], { type: config.mimeType || 'audio/wav' }), fileName);

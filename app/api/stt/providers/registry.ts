@@ -19,7 +19,7 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     label: 'ElevenLabs',
     description: 'High quality ASR with Scribe model',
     requiresApiKey: true,
-    defaultModel: 'scribe_v1',
+    defaultModel: 'scribe_v2',
     supportsLanguageAuto: true,
   },
   {
@@ -27,7 +27,7 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     label: 'Soniox',
     description: 'Fast and accurate async transcription',
     requiresApiKey: true,
-    defaultModel: 'stt-async-v4',
+    defaultModel: 'stt-async-v5',
     supportsLanguageAuto: true,
   },
   {

@@ -33,11 +33,11 @@ English version: [README.en.md](README.en.md)
 
 | 后端 | 说明 | 默认模型 |
 | --- | --- | --- |
-| ElevenLabs | 高质量语音识别 | `scribe_v1` |
-| Soniox | 异步转写，响应较快 | `stt-async-v4` |
+| ElevenLabs | 高质量语音识别 | `scribe_v2` |
+| Soniox | 异步转写，响应较快 | `stt-async-v5` |
 | Groq | 通过 Groq 的 OpenAI-compatible API 调用 Whisper | `whisper-large-v3-turbo` |
 | OpenAI Compatible | OpenAI 及兼容的音频转写 API，可配置 Base URL 和模型 | `whisper-1` |
-| Gladia (Async) | 预录音频异步转写，支持 custom vocabulary | 使用 Gladia 预录音 API 的默认模型配置 |
+| Gladia (Async) | 预录音频异步转写，支持 custom vocabulary | `solaria-3` |
 | Gladia Real Time | 通过 WebSocket 发送 16 kHz / 16-bit / mono PCM，返回 partial/final 转写结果 | `solaria-1` |
 
 所有 ASR 后端都需要用户在浏览器设置中输入对应的 API Key。语言可以选择自动检测或指定语言。Gladia 两种模式都支持将术语库作为 custom vocabulary 传给识别服务；实时模式在录音过程中直接展示中间结果，停止录音后继续执行自动优化、复制和历史保存流程。

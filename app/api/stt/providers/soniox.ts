@@ -21,7 +21,7 @@ export class SonioxProvider implements ASRProvider {
     fileName: string,
     config: ASRConfig
   ): Promise<ASRResult> {
-    const { apiKey, language = 'auto', model = 'stt-async-v4', enablePunctuation = true } = config;
+    const { apiKey, language = 'auto', model = 'stt-async-v5', enablePunctuation = true } = config;
 
     // Create Soniox client with provided API key
     const client = new SonioxNodeClient({
