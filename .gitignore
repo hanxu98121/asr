@@ -84,6 +84,7 @@ certificates
 CLAUDE.md
 
 # Agent/tool scratch files
+AGENTS.md
 .kilo/
 
 # Local test fixtures and vendor demos
@@ -99,3 +100,4 @@ __MACOSX/
 # Temporary files
 cc
 *.tmp
+.env*
