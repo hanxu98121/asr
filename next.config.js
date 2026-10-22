@@ -1,3 +1,19 @@
+const { execSync } = require('node:child_process');
+const { version } = require('./package.json');
+
+// Shown in the page's top-left corner so a deployment can be identified.
+function resolveBuildId() {
+  const ci = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA;
+  if (ci) return ci.slice(0, 7);
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const dirty = execSync('git status --porcelain', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return dirty ? `${sha}-dirty` : sha;
+  } catch {
+    return 'unknown';
+  }
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -6,6 +22,7 @@ const nextConfig = {
   // runtime process.env object, which is unavailable in the browser.
   env: {
     NEXT_PUBLIC_GLADIA_RELAY_URL: process.env.NEXT_PUBLIC_GLADIA_RELAY_URL || '',
+    NEXT_PUBLIC_APP_VERSION: `v${version} (${resolveBuildId()})`,
   },
   // 支持更大的音频文件上传
   experimental: {

@@ -74,6 +74,9 @@ export default function RootLayout({
       <body className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
         <main className="container mx-auto px-4 py-8 max-w-4xl relative">
           <LanguageSwitcher />
+          <span className="absolute top-4 left-4 px-2 py-1 text-xs text-gray-500 dark:text-gray-400 select-text">
+            {process.env.NEXT_PUBLIC_APP_VERSION}
+          </span>
           <header className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-800 dark:text-white mb-2">
               {t('header.title')}
