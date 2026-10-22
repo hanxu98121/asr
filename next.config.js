@@ -2,15 +2,19 @@ const { execSync } = require('node:child_process');
 const { version } = require('./package.json');
 
 // Shown in the page's top-left corner so a deployment can be identified.
+// The build number is the commit count, so it grows with every commit.
+function git(args) {
+  return execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+}
+
 function resolveBuildId() {
-  const ci = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA;
-  if (ci) return ci.slice(0, 7);
   try {
-    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-    const dirty = execSync('git status --porcelain', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-    return dirty ? `${sha}-dirty` : sha;
+    const build = git('rev-list --count HEAD');
+    const sha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || git('rev-parse HEAD')).slice(0, 7);
+    const dirty = !process.env.CI && git('status --porcelain') ? '-dirty' : '';
+    return `build ${build} · ${sha}${dirty}`;
   } catch {
-    return 'unknown';
+    return 'build unknown';
   }
 }
 
