@@ -108,7 +108,7 @@ export class GladiaProvider implements ASRProvider {
     const customVocabulary = this.buildCustomVocabulary(terminology, language);
     const body: Record<string, any> = {
       audio_url: audioUrl,
-      model: 'solaria-3',
+      model: 'solaria-1',
       detect_language: language === 'auto',
     };
 

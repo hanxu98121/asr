@@ -37,7 +37,7 @@ For asynchronous backends, click **Insert** as often as needed during recording.
 | Soniox | Async transcription with fast turnaround | `stt-async-v5` |
 | Groq | Whisper transcription through Groq's OpenAI-compatible API | `whisper-large-v3-turbo` |
 | OpenAI Compatible | OpenAI and compatible audio transcription APIs with custom Base URL and model | `whisper-1` |
-| Gladia (Async) | Asynchronous pre-recorded transcription with custom vocabulary | `solaria-3` |
+| Gladia (Async) | Asynchronous pre-recorded transcription with custom vocabulary | `solaria-1` |
 | Gladia Real Time | WebSocket transcription with 16 kHz / 16-bit / mono PCM and partial/final results | `solaria-1` |
 
 Every ASR backend requires an API key entered in the browser settings. The language can be auto-detected or specified explicitly. Both Gladia modes can receive the terminology list as custom vocabulary. Real-time mode displays interim results while recording and runs the existing optimization, copy, and history flow after recording stops.
