@@ -27,7 +27,7 @@ export const AVAILABLE_BACKENDS: ASRBackendConfig[] = [
     label: 'Soniox',
     description: 'Fast and accurate async transcription',
     requiresApiKey: true,
-    defaultModel: 'stt-async-v5',
+    defaultModel: 'stt-async-v6',
     supportsLanguageAuto: true,
   },
   {

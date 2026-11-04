@@ -34,7 +34,7 @@ English version: [README.en.md](README.en.md)
 | 后端 | 说明 | 默认模型 |
 | --- | --- | --- |
 | ElevenLabs | 高质量语音识别 | `scribe_v2` |
-| Soniox | 异步转写，响应较快 | `stt-async-v5` |
+| Soniox | 异步转写，响应较快 | `stt-async-v6` |
 | Groq | 通过 Groq 的 OpenAI-compatible API 调用 Whisper | `whisper-large-v3-turbo` |
 | OpenAI Compatible | OpenAI 及兼容的音频转写 API，可配置 Base URL 和模型 | `whisper-1` |
 | Gladia (Async) | 预录音频异步转写，支持 custom vocabulary | `solaria-1` |

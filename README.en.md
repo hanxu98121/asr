@@ -34,7 +34,7 @@ For asynchronous backends, click **Insert** as often as needed during recording.
 | Backend | Notes | Default model |
 | --- | --- | --- |
 | ElevenLabs | High-quality speech recognition | `scribe_v2` |
-| Soniox | Async transcription with fast turnaround | `stt-async-v5` |
+| Soniox | Async transcription with fast turnaround | `stt-async-v6` |
 | Groq | Whisper transcription through Groq's OpenAI-compatible API | `whisper-large-v3-turbo` |
 | OpenAI Compatible | OpenAI and compatible audio transcription APIs with custom Base URL and model | `whisper-1` |
 | Gladia (Async) | Asynchronous pre-recorded transcription with custom vocabulary | `solaria-1` |
