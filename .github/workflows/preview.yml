@@ -29,7 +29,8 @@ jobs:
       - name: Deploy preview and point the preview domain at it
         run: |
           scrub() { sed -E 's#https?://[^ ]+#<url>#g'; }
-          url=$(npx --yes vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN" 2>err.txt) || { scrub < err.txt; exit 1; }
+          url=$(npx --yes vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN" 2>err.txt) || { echo "deploy failed:"; scrub < err.txt; exit 1; }
           echo "::add-mask::$url"
-          npx --yes vercel@latest alias set "$url" asr-whp.vercel.app --token="$VERCEL_TOKEN" 2>&1 | scrub
+          echo "deploy ok, setting alias"
+          npx --yes vercel@latest alias set "$url" asr-whp.vercel.app --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN" 2>&1 | scrub
           test "${PIPESTATUS[0]}" -eq 0
