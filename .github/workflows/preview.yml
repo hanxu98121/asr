@@ -26,11 +26,29 @@ jobs:
       # Output is discarded so deployment URLs never land in (public) logs.
       - run: npx --yes vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN" > /dev/null
       - run: npx --yes vercel@latest build --token="$VERCEL_TOKEN" > /dev/null
-      - name: Deploy preview and point the preview domain at it
+      - name: Deploy preview and update its branch and rolling aliases
         run: |
           scrub() { sed -E 's#https?://[^ ]+#<url>#g'; }
           url=$(npx --yes vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN" 2>err.txt) || { echo "deploy failed:"; scrub < err.txt; exit 1; }
           echo "::add-mask::$url"
-          echo "deploy ok, setting alias"
-          npx --yes vercel@latest alias set "$url" asr-whp.vercel.app --scope="$VERCEL_ORG_ID" --token="$VERCEL_TOKEN" 2>&1 | scrub
-          test "${PIPESTATUS[0]}" -eq 0
+          echo "deploy ok, setting aliases"
+          # The CLI alias command needs user access this token lacks, so use the REST API.
+          api=https://api.vercel.com
+          auth="Authorization: Bearer $VERCEL_TOKEN"
+          host=${url#https://}
+          id=$(curl -fsS -H "$auth" "$api/v13/deployments/$host?teamId=$VERCEL_ORG_ID" | jq -r .id)
+          # Branch alias asr-<branch>-<team>.vercel.app, derived from the deployment host
+          # (asr-<id>-<team>.vercel.app) so the team slug is not hard-coded. DNS labels cap at 63.
+          rest=${host#asr-}
+          team=${rest#*-}
+          team=${team%.vercel.app}
+          max=$((63 - 4 - 1 - ${#team}))
+          slug=$(echo "$GITHUB_REF_NAME" | tr 'A-Z' 'a-z' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-$max | sed -E 's/-+$//')
+          failed=0
+          for alias in "asr-$slug-$team.vercel.app" asr-whp.vercel.app; do
+            code=$(curl -sS -o resp.json -w '%{http_code}' -X POST -H "$auth" -H 'Content-Type: application/json' \
+              -d "{\"alias\":\"$alias\"}" "$api/v2/deployments/$id/aliases?teamId=$VERCEL_ORG_ID")
+            echo "alias HTTP $code: $(jq -r '.error.code // "ok"' resp.json)"
+            [ "$code" -lt 300 ] || failed=1
+          done
+          exit $failed
