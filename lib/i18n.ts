@@ -340,6 +340,10 @@ export const translations: Translations = {
     zh: '正在识别中，请稍候...',
     en: 'Recognizing, please wait...'
   },
+  'op.cancel.processing': {
+    zh: '停止识别',
+    en: 'Stop Recognition'
+  },
 
   // Optimization Result
   'optimization.title': {

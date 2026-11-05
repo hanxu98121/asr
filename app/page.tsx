@@ -22,6 +22,23 @@ interface RecordingSnapshot {
   duration: number;
   recordId: string | null;
   canContinue: boolean;
+  viewJob: RecognitionJob | null;
+}
+/** One finished recording being recognized in the background; the live view may move on without it. */
+interface RecognitionJob {
+  recordId: string;
+  backend: ASRBackend;
+  segment: Blob;
+  fullAudio: Blob;
+  duration: number;
+  baseText: string;
+  prev: RecognitionJob | null;
+  successor: RecognitionJob | null;
+  controller: AbortController;
+  cancelled: boolean;
+  rawText: Promise<string | null>;
+  resolveRaw: (text: string | null) => void;
+  result?: { text: string; optimized: string };
 }
 interface ActiveRecording {
   id: number;
@@ -35,6 +52,8 @@ interface ActiveRecording {
   segmentsReady: Promise<void>;
   segmented: boolean;
   segmentText: string;
+  controller: AbortController;
+  prevJob: RecognitionJob | null;
   timeout?: ReturnType<typeof setTimeout>;
 }
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -137,8 +156,13 @@ export default function Home() {
   const recordIdRef = useRef<string | null>(null);
   const sessionRef = useRef(new RecordingSession<RecordingSnapshot>());
   const activeRecordingRef = useRef<ActiveRecording | null>(null);
-  const recognitionAbortRef = useRef<AbortController | null>(null);
-  const blocked = isStarting || isRecording || isProcessing || isOptimizing;
+  const jobsRef = useRef(new Set<RecognitionJob>());
+  const viewJobRef = useRef<RecognitionJob | null>(null);
+  const [pendingJobs, setPendingJobs] = useState(0);
+  // Background recognition only locks editing; starting or continuing a recording stays available.
+  const processing = isProcessing || pendingJobs > 0;
+  const recordBlocked = isStarting || isRecording || isProcessing || isOptimizing;
+  const blocked = recordBlocked || pendingJobs > 0;
 
   const stopAudioPlayback = useCallback(() => {
     const audio = playbackRef.current;
@@ -169,12 +193,12 @@ export default function Home() {
 
   useEffect(() => () => {
     sessionRef.current.cancel();
-    recognitionAbortRef.current?.abort();
+    activeRecordingRef.current?.controller.abort();
+    jobsRef.current.forEach(job => { job.cancelled = true; job.controller.abort(); });
     if (activeRecordingRef.current?.timeout) clearTimeout(activeRecordingRef.current.timeout);
     gladiaLiveRef.current?.close();
   }, []);
 
-  const asrClientRef = useRef<ASRClient | null>(null);
   const audioRecorderRef = useRef<AudioRecorderHandle>(null);
   const gladiaLiveRef = useRef<GladiaLiveClient | null>(null);
   const gladiaFinalTextRef = useRef('');
@@ -190,11 +214,18 @@ export default function Home() {
     setRecordingDuration(snapshot.duration);
     recordIdRef.current = snapshot.recordId;
     setCanContinue(snapshot.canContinue);
+    // A background job may have finished while the abandoned recording was running.
+    viewJobRef.current = snapshot.viewJob;
+    const finished = snapshot.viewJob?.result;
+    if (finished) {
+      setTranscript(finished.text);
+      setOptimizedText(finished.optimized);
+    }
   }, []);
 
   const abandonRecording = useCallback(() => {
     const snapshot = sessionRef.current.cancel();
-    recognitionAbortRef.current?.abort();
+    activeRecordingRef.current?.controller.abort();
     if (activeRecordingRef.current?.timeout) clearTimeout(activeRecordingRef.current.timeout);
     activeRecordingRef.current = null;
     gladiaLiveRef.current?.close();
@@ -206,19 +237,6 @@ export default function Home() {
     setIsRecording(false);
     setIsProcessing(false);
   }, [restoreSnapshot]);
-
-  // 初始化ASR客户端
-  const getASRClient = useCallback(() => {
-    if (!asrClientRef.current) {
-      asrClientRef.current = new ASRClient(apiKey, undefined, selectedBackend);
-    } else {
-      asrClientRef.current.setApiKey(apiKey);
-      asrClientRef.current.setBackend(selectedBackend);
-    }
-    asrClientRef.current.setTerminology(terminology);
-    asrClientRef.current.setOpenAIConfig(asrModel, asrBaseUrl);
-    return asrClientRef.current;
-  }, [apiKey, selectedBackend, terminology, asrModel, asrBaseUrl]);
 
   // 优化文本
   const handleOptimize = useCallback(async () => {
@@ -353,10 +371,17 @@ export default function Home() {
 
 
   // Shared finalization for uploaded and live audio. Each callback owns a generation.
-  const finalizeTranscript = useCallback(async (text: string, id: number, language?: string) => {
-    if (!sessionRef.current.isCurrent(id)) return;
-    setTranscript(text);
-    setOptimizedText('');
+  // `alive` ends a stale callback; `shown` says whether the result belongs in the on-screen editor.
+  const finalizeCore = useCallback(async (o: {
+    text: string; language?: string; recordId: string; duration: number;
+    alive: () => boolean; shown: () => boolean;
+  }): Promise<{ optimized: string } | null> => {
+    const { text, language, recordId, duration, alive, shown } = o;
+    if (!alive()) return null;
+    if (shown()) {
+      setTranscript(text);
+      setOptimizedText('');
+    }
     let optimized = '';
     if (autoOptimize && aiApiKey.trim()) {
       try {
@@ -364,29 +389,40 @@ export default function Home() {
         if (aiModel) optimizer.setModel(aiModel);
         if (aiBaseUrl) optimizer.setBaseUrl(aiBaseUrl);
         const result = await optimizer.optimizeText(text);
-        if (!sessionRef.current.isCurrent(id)) return;
+        if (!alive()) return null;
         if (!result.success || !result.text) throw new Error(result.error || 'Empty optimization result');
         optimized = result.text;
-        setOptimizedText(optimized);
+        if (shown()) setOptimizedText(optimized);
       } catch (error) {
-        if (!sessionRef.current.isCurrent(id)) return;
+        if (!alive()) return null;
         setError(t('error.optimize.failed') + (error as Error).message);
       }
     }
-    if (!sessionRef.current.isCurrent(id)) return;
+    if (!alive()) return null;
     storage.saveRecord({
-      id: recordIdRef.current || (recordIdRef.current = crypto.randomUUID()),
-      text, optimizedText: optimized || undefined,
-      timestamp: Date.now(), duration: recordingDurationRef.current, language,
+      id: recordId, text, optimizedText: optimized || undefined,
+      timestamp: Date.now(), duration, language,
     });
-    try {
-      await navigator.clipboard.writeText(autoCopyOptimized && optimized ? optimized : text);
-      if (sessionRef.current.isCurrent(id)) {
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      }
-    } catch { /* Clipboard access may require a user gesture. */ }
+    // Results that finish in the background only reach history, never the clipboard.
+    if (shown()) {
+      try {
+        await navigator.clipboard.writeText(autoCopyOptimized && optimized ? optimized : text);
+        if (alive()) {
+          setCopySuccess(true);
+          setTimeout(() => setCopySuccess(false), 2000);
+        }
+      } catch { /* Clipboard access may require a user gesture. */ }
+    }
+    return { optimized };
   }, [autoOptimize, aiApiKey, aiBackend, aiPrompt, terminology, aiModel, aiBaseUrl, autoCopyOptimized, t]);
+
+  const finalizeTranscript = useCallback(async (text: string, id: number, language?: string) => {
+    await finalizeCore({
+      text, language, duration: recordingDurationRef.current,
+      recordId: recordIdRef.current || (recordIdRef.current = crypto.randomUUID()),
+      alive: () => sessionRef.current.isCurrent(id), shown: () => true,
+    });
+  }, [finalizeCore]);
 
   const finishProcessing = useCallback((id: number) => {
     if (!sessionRef.current.isCurrent(id)) return;
@@ -398,60 +434,110 @@ export default function Home() {
     setCanContinue(!!currentAudioBlobRef.current);
   }, []);
 
-  const recognizeAudio = useCallback(async (audio: Blob, id: number, prefix = '', backendOverride?: ASRBackend) => {
-    if (!sessionRef.current.isCurrent(id)) return;
-    setIsProcessing(true);
-    setError(null);
+  // Each recognition gets its own client: jobs overlap, and a shared one would mix backends and keys.
+  const createClient = useCallback((backend: ASRBackend) => {
+    const client = new ASRClient(apiKey, undefined, backend);
+    client.setTerminology(terminology);
+    client.setOpenAIConfig(asrModel, asrBaseUrl);
+    return client;
+  }, [apiKey, terminology, asrModel, asrBaseUrl]);
+
+  const makeJob = useCallback((p: {
+    recordId: string; backend: ASRBackend; segment: Blob; fullAudio: Blob; duration: number;
+    baseText: string; prev: RecognitionJob | null; controller?: AbortController;
+  }): RecognitionJob => {
+    let resolveRaw: (text: string | null) => void = () => {};
+    const rawText = new Promise<string | null>(resolve => { resolveRaw = resolve; });
+    const { controller, ...rest } = p;
+    const job: RecognitionJob = {
+      ...rest, successor: null, controller: controller ?? new AbortController(),
+      cancelled: false, rawText, resolveRaw,
+    };
+    if (p.prev) p.prev.successor = job;
+    jobsRef.current.add(job);
+    setPendingJobs(jobsRef.current.size);
+    viewJobRef.current = job;
+    return job;
+  }, []);
+
+  // `source` carries text already recognized segment by segment while recording.
+  const runJob = useCallback(async (job: RecognitionJob, source?: { ready: Promise<void>; text: () => string }) => {
+    const alive = () => !job.cancelled && !job.successor;
+    const shown = () => viewJobRef.current === job && !activeRecordingRef.current;
     try {
-      const client = getASRClient();
-      client.setBackend(backendOverride || selectedBackend);
-      const controller = new AbortController();
-      recognitionAbortRef.current?.abort();
-      recognitionAbortRef.current = controller;
-      const result = await client.recognizeAudio(audio, 'recording.wav', { compressAudio, signal: controller.signal });
-      if (!sessionRef.current.isCurrent(id)) return;
-      if (!result.success && result.errorCode && result.errorCode !== 'SERVICE_ERROR') {
-        throw new Error(t(`error.stt.${result.errorCode}`));
+      let prefix = job.baseText;
+      let useFull = false;
+      if (job.prev) {
+        // A continued recording waits for the earlier text and is appended beneath it.
+        const prevText = await job.prev.rawText;
+        if (job.cancelled) return;
+        if (prevText === null) { prefix = ''; useFull = true; } // Earlier part failed: recognize all audio.
+        else {
+          prefix = prevText;
+          if (shown()) setTranscript(prefix);
+        }
       }
-      if (!result.success || !result.text?.trim()) throw new Error(result.error || t('error.empty.transcript'));
-      await finalizeTranscript(appendTranscript(prefix, result.text), id, result.language);
+      let text: string;
+      let language: string | undefined;
+      if (source && !useFull) {
+        await source.ready;
+        if (job.cancelled) return;
+        const segmentText = source.text();
+        if (!segmentText.trim()) return;
+        text = appendTranscript(prefix, segmentText);
+      } else {
+        const client = createClient(job.backend);
+        const result = await client.recognizeAudio(useFull ? job.fullAudio : job.segment, 'recording.wav',
+          { compressAudio, signal: job.controller.signal });
+        if (job.cancelled) return;
+        if (!result.success && result.errorCode && result.errorCode !== 'SERVICE_ERROR') {
+          throw new Error(t(`error.stt.${result.errorCode}`));
+        }
+        if (!result.success || !result.text?.trim()) throw new Error(result.error || t('error.empty.transcript'));
+        text = appendTranscript(prefix, result.text);
+        language = result.language;
+      }
+      job.resolveRaw(text);
+      if (job.successor) return; // The continued recording optimizes and saves the combined text.
+      const done = await finalizeCore({ text, language, recordId: job.recordId, duration: job.duration, alive, shown });
+      if (done) job.result = { text, optimized: done.optimized };
     } catch (error) {
-      if (sessionRef.current.isCurrent(id)) setError(t('error.recognize.failed') + (error as Error).message);
+      if (!job.cancelled) setError(t('error.recognize.failed') + (error as Error).message);
     } finally {
-      finishProcessing(id);
+      job.resolveRaw(null);
+      jobsRef.current.delete(job);
+      setPendingJobs(jobsRef.current.size);
     }
-  }, [getASRClient, selectedBackend, compressAudio, finalizeTranscript, finishProcessing, t]);
+  }, [createClient, compressAudio, finalizeCore, t]);
 
   const handleAudioSegment = useCallback((wavData: Uint8Array) => {
     const active = activeRecordingRef.current;
     if (!active || active.backend === 'gladia-realtime' || !sessionRef.current.isCurrent(active.id)) return;
     active.segmented = true;
     const audio = new Blob([new Uint8Array(wavData)], { type: 'audio/wav' });
-    setIsProcessing(true);
-    if (!recognitionAbortRef.current || recognitionAbortRef.current.signal.aborted) {
-      recognitionAbortRef.current = new AbortController();
-    }
-    const controller = recognitionAbortRef.current;
+    const controller = active.controller;
     // Queue user-chosen segments in recording order; failures leave later segments usable.
+    // Segments may outlive the recording itself, so only the controller says whether they were abandoned.
     active.segmentsReady = active.segmentsReady.then(async () => {
-      if (!sessionRef.current.isCurrent(active.id)) return;
+      if (controller.signal.aborted) return;
       try {
-        const client = getASRClient();
-        client.setBackend(active.backend);
+        const client = createClient(active.backend);
         const result = await client.recognizeAudio(audio, 'recording.wav', { compressAudio, signal: controller.signal });
-        if (!sessionRef.current.isCurrent(active.id)) return;
+        if (controller.signal.aborted) return;
         if (!result.success && result.errorCode && result.errorCode !== 'SERVICE_ERROR') {
           throw new Error(t(`error.stt.${result.errorCode}`));
         }
         if (!result.success || !result.text?.trim()) throw new Error(result.error || t('error.empty.transcript'));
         active.segmentText = appendTranscript(active.segmentText, result.text);
-        setTranscript(active.segmentText);
-        setOptimizedText('');
+        if (sessionRef.current.isCurrent(active.id)) {
+          setTranscript(appendTranscript(active.append ? active.snapshot.text : '', active.segmentText));
+          setOptimizedText('');
+        }
       } catch (error) {
-        if (sessionRef.current.isCurrent(active.id)) setError(t('error.recognize.failed') + (error as Error).message);
+        if (!controller.signal.aborted) setError(t('error.recognize.failed') + (error as Error).message);
       }
     });
-  }, [getASRClient, compressAudio, t]);
+  }, [createClient, compressAudio, t]);
 
   const handleAudioComplete = useCallback((wavData: Uint8Array) => {
     const active = activeRecordingRef.current;
@@ -470,15 +556,18 @@ export default function Home() {
         recordingDurationRef.current = wavDuration(merged);
         setRecordingDuration(recordingDurationRef.current);
         if (active.backend !== 'gladia-realtime') {
-          if (active.segmented) {
-            await active.segmentsReady;
-            if (!sessionRef.current.isCurrent(active.id)) return;
-            try {
-              if (active.segmentText.trim()) await finalizeTranscript(active.segmentText, active.id);
-            } finally { finishProcessing(active.id); }
-          } else {
-            await recognizeAudio(segment, active.id, active.append ? active.snapshot.text : '', active.backend);
-          }
+          // Recognition continues in the background so the recorder is free for the next recording.
+          const job = makeJob({
+            recordId: recordIdRef.current || (recordIdRef.current = crypto.randomUUID()),
+            backend: active.backend, segment, fullAudio: audio, duration: recordingDurationRef.current,
+            baseText: active.append ? active.snapshot.text : '', prev: active.prevJob,
+            controller: active.controller,
+          });
+          sessionRef.current.finish(active.id);
+          activeRecordingRef.current = null;
+          busyRef.current = false;
+          setCanContinue(true);
+          void runJob(job, active.segmented ? { ready: active.segmentsReady, text: () => active.segmentText } : undefined);
         }
       } catch (error) {
         if (sessionRef.current.isCurrent(active.id)) {
@@ -487,7 +576,7 @@ export default function Home() {
         }
       }
     })();
-  }, [abandonRecording, recognizeAudio, finalizeTranscript, finishProcessing, t]);
+  }, [abandonRecording, makeJob, runJob, t]);
 
   const handleGladiaTranscript = useCallback((event: GladiaTranscriptEvent, id: number) => {
     const active = activeRecordingRef.current;
@@ -529,11 +618,15 @@ export default function Home() {
 
   const handleReRecognize = useCallback(() => {
     if (blocked || busyRef.current || !currentAudioBlob || !apiKey.trim()) return;
-    busyRef.current = true;
-    const id = sessionRef.current.begin({ text: transcript, optimizedText, audio: currentAudioBlob,
-      duration: recordingDurationRef.current, recordId: recordIdRef.current, canContinue });
-    void recognizeAudio(currentAudioBlob, id, '', selectedBackend === 'gladia-realtime' ? 'gladia' : selectedBackend);
-  }, [blocked, currentAudioBlob, apiKey, transcript, optimizedText, canContinue, recognizeAudio, selectedBackend]);
+    setError(null);
+    const job = makeJob({
+      recordId: recordIdRef.current || (recordIdRef.current = crypto.randomUUID()),
+      backend: selectedBackend === 'gladia-realtime' ? 'gladia' : selectedBackend,
+      segment: currentAudioBlob, fullAudio: currentAudioBlob, duration: recordingDurationRef.current,
+      baseText: '', prev: null,
+    });
+    void runJob(job);
+  }, [blocked, currentAudioBlob, apiKey, makeJob, runJob, selectedBackend]);
 
   // 播放录音
   const handlePlayAudio = useCallback(() => {
@@ -566,6 +659,7 @@ export default function Home() {
   const handleClear = useCallback(() => {
     if (blocked || busyRef.current) return;
     sessionRef.current.cancel();
+    viewJobRef.current = null;
     setTranscript('');
     setOptimizedText('');
     setError(null);
@@ -580,6 +674,7 @@ export default function Home() {
   const handleSelectRecord = useCallback((record: TranscriptionRecord) => {
     if (blocked || busyRef.current) return;
     sessionRef.current.cancel();
+    viewJobRef.current = null;
     setTranscript(record.text);
     setOptimizedText(record.optimizedText || '');
     currentAudioBlobRef.current = null;
@@ -629,18 +724,21 @@ export default function Home() {
   }, [transcript, optimizedText, autoCopyOptimized]);
 
   const startRecording = useCallback(async (append: boolean) => {
-    if (blocked || busyRef.current || (append && !canContinue)) return;
+    if (recordBlocked || busyRef.current || (append && !canContinue)) return;
     if (!apiKey.trim()) { setError(t('settings.enter.api.key')); return; }
     busyRef.current = true;
     setIsStarting(true);
     setError(null);
     const snapshot: RecordingSnapshot = { text: transcript, optimizedText, audio: currentAudioBlobRef.current,
-      duration: recordingDurationRef.current, recordId: recordIdRef.current, canContinue };
+      duration: recordingDurationRef.current, recordId: recordIdRef.current, canContinue,
+      viewJob: viewJobRef.current };
     const id = sessionRef.current.begin(snapshot);
+    // Continuing while the earlier part is still recognizing queues behind its text.
+    const prevJob = append && snapshot.viewJob && jobsRef.current.has(snapshot.viewJob) ? snapshot.viewJob : null;
     const active: ActiveRecording = { id, snapshot, append, backend: selectedBackend,
       started: false, stopped: false, finalized: false, audioReady: Promise.resolve(),
-      segmentsReady: Promise.resolve(), segmented: false, segmentText: append ? snapshot.text : '' };
-    recognitionAbortRef.current = new AbortController();
+      segmentsReady: Promise.resolve(), segmented: false, segmentText: '',
+      controller: new AbortController(), prevJob };
     activeRecordingRef.current = active;
     gladiaFinalTextRef.current = '';
     gladiaPartialTextRef.current = '';
@@ -665,6 +763,7 @@ export default function Home() {
       if (!sessionRef.current.isCurrent(id)) return;
       active.started = true;
       if (!append) {
+        viewJobRef.current = null;
         setTranscript('');
         setOptimizedText('');
         currentAudioBlobRef.current = null;
@@ -682,12 +781,21 @@ export default function Home() {
     } finally {
       if (sessionRef.current.isCurrent(id)) setIsStarting(false);
     }
-  }, [blocked, canContinue, apiKey, transcript, optimizedText, selectedBackend, terminology,
+  }, [recordBlocked, canContinue, apiKey, transcript, optimizedText, selectedBackend, terminology,
     handleGladiaTranscript, handleGladiaSessionComplete, abandonRecording, t]);
 
   const handleStartRecording = useCallback(() => { void startRecording(false); }, [startRecording]);
   const handleContinueRecording = useCallback(() => { void startRecording(true); }, [startRecording]);
   const handleCancelRecording = useCallback(() => { abandonRecording(); setError(null); }, [abandonRecording]);
+  // Stops every pending recognition but keeps the recorded audio, so it can be retried later.
+  const handleCancelProcessing = useCallback(() => {
+    jobsRef.current.forEach(job => { job.cancelled = true; job.controller.abort(); });
+    jobsRef.current.clear();
+    setPendingJobs(0);
+    if (isProcessing && activeRecordingRef.current) abandonRecording();
+    setCanContinue(!!currentAudioBlobRef.current);
+    setError(null);
+  }, [isProcessing, abandonRecording]);
   const handleInsertRecording = useCallback(() => {
     const active = activeRecordingRef.current;
     if (!active?.started || active.stopped || active.backend === 'gladia-realtime' ||
@@ -698,7 +806,7 @@ export default function Home() {
     const active = activeRecordingRef.current;
     if (!active?.started || active.stopped || !sessionRef.current.isCurrent(active.id)) return;
     active.stopped = true;
-    setIsProcessing(true);
+    if (active.backend === 'gladia-realtime') setIsProcessing(true);
     audioRecorderRef.current?.stopRecording();
     if (!sessionRef.current.isCurrent(active.id)) return;
     if (active.backend === 'gladia-realtime') {
@@ -750,7 +858,7 @@ export default function Home() {
           onCancelRequest={handleCancelRecording}
           onContinueRequest={handleContinueRecording}
           canContinue={canContinue}
-          disabled={blocked}
+          disabled={recordBlocked}
           onStateChange={handleStateChange}
           onError={handleError}
         />
@@ -772,7 +880,7 @@ export default function Home() {
                 className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 disabled={blocked || !apiKey.trim()}
               >
-                <span>🔄</span> {isProcessing ? t('op.processing') : t('op.retry')}
+                <span>🔄</span> {processing ? t('op.processing') : t('op.retry')}
               </button>
               <button
                 onClick={handleOptimize}
@@ -784,7 +892,7 @@ export default function Home() {
               <button
                 onClick={handleCopy}
                 className="min-w-0 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                disabled={!transcript || isProcessing}
+                disabled={!transcript || processing}
               >
                 <span>📋</span> {t('op.copy')}
               </button>
@@ -827,10 +935,19 @@ export default function Home() {
               </span>
             )}
 
-            {isProcessing && (
+            {processing && (
               <span className="text-blue-600 dark:text-blue-400">
                 {t('op.processing')}
+                {pendingJobs > 1 && ` (${pendingJobs})`}
               </span>
+            )}
+            {processing && !isRecording && !isStarting && (
+              <button
+                onClick={handleCancelProcessing}
+                className="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                {t('op.cancel.processing')}
+              </button>
             )}
           </div>
         </div>
