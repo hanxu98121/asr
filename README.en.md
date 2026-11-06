@@ -105,6 +105,19 @@ npm run build
 npm start
 ```
 
+## Versioning
+
+The top-left corner shows `v<major>.<minor>.<patch> (<commit>)`, for example `v0.1.44 (36ef846)`. The patch number is the count of commits since the newest version tag, so it grows with every commit. Without a tag, major.minor comes from `version` in `package.json` and the patch counts every commit.
+
+To start a new major.minor line (for example 0.2), tag `main` and push the tag; the next commit is then `0.2.1`:
+
+```bash
+git tag v0.2
+git push origin v0.2
+```
+
+Push the tag before deploying or the new version will not appear. The patch counts commits on the current branch since that tag, so after a feature branch merges, `main` shows one more than the branch did, for the merge commit itself.
+
 ## Local Verification
 
 ```bash
