@@ -1,21 +1,11 @@
 const { execSync } = require('node:child_process');
 const { version } = require('./package.json');
+const { resolveVersion } = require('./lib/app-version');
 
 // Shown in the page's top-left corner so a deployment can be identified.
-// The build number is the commit count, so it grows with every commit.
+// The patch number counts commits since the newest version tag, so it grows with every commit.
 function git(args) {
   return execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-}
-
-function resolveBuildId() {
-  try {
-    const build = git('rev-list --count HEAD');
-    const sha = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || git('rev-parse HEAD')).slice(0, 7);
-    const dirty = !process.env.CI && git('status --porcelain') ? '-dirty' : '';
-    return `build ${build} · ${sha}${dirty}`;
-  } catch {
-    return 'build unknown';
-  }
 }
 
 /** @type {import('next').NextConfig} */
@@ -26,7 +16,7 @@ const nextConfig = {
   // runtime process.env object, which is unavailable in the browser.
   env: {
     NEXT_PUBLIC_GLADIA_RELAY_URL: process.env.NEXT_PUBLIC_GLADIA_RELAY_URL || '',
-    NEXT_PUBLIC_APP_VERSION: `v${version} (${resolveBuildId()})`,
+    NEXT_PUBLIC_APP_VERSION: resolveVersion(git, version, process.env),
   },
   // 支持更大的音频文件上传
   experimental: {
